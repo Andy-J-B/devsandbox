@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 _ClockFn = Callable[[], datetime]
 
-_real_now: _ClockFn = lambda: datetime.now(timezone.utc)
+
+def _real_now() -> datetime:
+    return datetime.now(UTC)
+
+
+_real_now_fn: _ClockFn = _real_now
 _overridden: _ClockFn | None = None
 
 
 def utcnow() -> datetime:
     """Return the current UTC time (timezone-aware). Tests may override via ``set_utcnow``."""
-    now = _overridden() if _overridden is not None else _real_now
+    now_fn = _overridden if _overridden is not None else _real_now_fn
+    now = now_fn()
     if now.tzinfo is None:
-        return now.replace(tzinfo=timezone.utc)
+        return now.replace(tzinfo=UTC)
     return now
 
 

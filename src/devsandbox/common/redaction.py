@@ -17,7 +17,7 @@ _SECRET_VALUE_RE = re.compile(
     r"|client[_-]?secret|secret|password|passwd|pwd|token)\s*[:=]\s*(\S+)",
 )
 _GITHUB_PAT_RE = re.compile(r"\bghp_[A-Za-z0-9_]{20,}\b")
-_OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9_]{20,}\b")
+_OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}\b")
 _AWS_KEY_RE = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 
 _PATTERNS: tuple[re.Pattern[str], ...] = (

@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from structlog.contextvars import merge_contextvars
+from structlog.typing import EventDict, WrappedLogger
 
-from ..redaction import redact
+from .redaction import redact
 
-_EventDict = dict[str, Any]
+_EventDict = EventDict
 
 
 def _redact_value(value: Any) -> Any:
@@ -25,9 +26,7 @@ def _redact_value(value: Any) -> Any:
     return value
 
 
-def _redact_processor(
-    logger: object, method_name: str, event_dict: _EventDict
-) -> _EventDict:
+def _redact_processor(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
     redacted = {key: _redact_value(val) for key, val in event_dict.items()}
     redacted["event"] = str(redacted.get("event", "unknown"))
     return redacted
@@ -49,4 +48,4 @@ structlog.configure(
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """Return a configured structlog bound logger for ``name``."""
-    return structlog.get_logger(name)
+    return cast("structlog.stdlib.BoundLogger", structlog.get_logger(name))

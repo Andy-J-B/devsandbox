@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .ids import AttemptId, PlanId, ProjectId, TaskId
+from .ids import AttemptId, PlanId, ProjectId
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Lifecycle states of a task."""
 
     PENDING = "pending"
@@ -27,7 +27,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class ProjectStatus(str, Enum):
+class ProjectStatus(StrEnum):
     """Lifecycle states of a project."""
 
     LOADED = "loaded"
@@ -41,14 +41,14 @@ class ProjectStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class ProjectMode(str, Enum):
+class ProjectMode(StrEnum):
     """Operating mode of a project."""
 
     SUPERVISED = "supervised"
     AUTONOMOUS = "autonomous"
 
 
-class AttemptOutcome(str, Enum):
+class AttemptOutcome(StrEnum):
     """Outcome of a single agent attempt."""
 
     EXITED_OK = "exited_ok"
@@ -59,7 +59,7 @@ class AttemptOutcome(str, Enum):
     SANDBOX_ERROR = "sandbox_error"
 
 
-class TaskOutcome(str, Enum):
+class TaskOutcome(StrEnum):
     """Aggregated outcome note produced after a task attempt cycle."""
 
     SUCCESS = "success"
@@ -108,7 +108,7 @@ class RepoSource(BaseModel):
     ref: str = "main"
 
     @model_validator(mode="after")
-    def _check_source(self) -> "RepoSource":
+    def _check_source(self) -> RepoSource:
         if (self.path is None) == (self.url is None):
             raise ValueError("exactly one of 'repo.path' or 'repo.url' must be set")
         return self
@@ -187,8 +187,8 @@ class ModelConfig(BaseModel):
 
 
 __all__ = [
-    "AttemptOutcome",
     "AttemptId",
+    "AttemptOutcome",
     "CheckSpec",
     "ContextBundle",
     "ModelConfig",

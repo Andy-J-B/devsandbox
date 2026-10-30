@@ -72,7 +72,10 @@ class AgentSpec(BaseModel):
     model: str | None = None
 
 
-_SECRET_FIELD_RE = re.compile(r"^(api[_\-]?key|apikey|token|tokens|password|pass|passwd|pwd|secret|client[_\-]?secret|auth)$", re.IGNORECASE)
+_SECRET_FIELD_RE = re.compile(
+    r"^(api[_\-]?key|apikey|token|tokens|password|pass|passwd|pwd|secret|client[_\-]?secret|auth)$",
+    re.IGNORECASE,
+)
 
 
 def _check_no_secret_literals(value: Any, path: str) -> None:
@@ -82,8 +85,14 @@ def _check_no_secret_literals(value: Any, path: str) -> None:
             _check_no_secret_literals(field_value, f"{path}{field_name}.")
     elif isinstance(value, dict):
         for key, val in value.items():
-            if _SECRET_FIELD_RE.fullmatch(str(key)) and not str(key).endswith("_ref") and val is not None:
-                raise ValueError(f"field {path}{key} looks like a secret value; use a secret_ref instead")
+            if (
+                _SECRET_FIELD_RE.fullmatch(str(key))
+                and not str(key).endswith("_ref")
+                and val is not None
+            ):
+                raise ValueError(
+                    f"field {path}{key} looks like a secret value; use a secret_ref instead"
+                )
             _check_no_secret_literals(val, f"{path}{key}.")
     elif isinstance(value, (list, tuple)):
         for item in value:
@@ -110,7 +119,8 @@ class ProjectSpec(BaseModel):
     @property
     def canonical_json(self) -> str:
         """Canonical JSON used for the stable spec hash."""
-        return json.dumps(self.model_dump(mode="json", sort_keys=True, separators=(",", ":")), default=str)
+        dumped = self.model_dump(mode="json")
+        return json.dumps(dumped, sort_keys=True, separators=(",", ":"), default=str)
 
     @property
     def spec_hash(self) -> str:
@@ -118,7 +128,7 @@ class ProjectSpec(BaseModel):
         return hashlib.sha256(self.canonical_json.encode("utf-8")).hexdigest()
 
     @model_validator(mode="after")
-    def _check_no_secret_literals(self) -> "ProjectSpec":
+    def _check_no_secret_literals(self) -> ProjectSpec:
         _check_no_secret_literals(self, "spec.")
         return self
 
