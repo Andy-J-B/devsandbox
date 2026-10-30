@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: devsandbox
+      POSTGRES_PASSWORD: devsandbox
+      POSTGRES_DB: devsandbox
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devsandbox -d devsandbox"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  orchestrator:
+    image: devsandbox/orchestrator:local
+    build:
+      context: .
+      dockerfile: docker/agent-base/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
