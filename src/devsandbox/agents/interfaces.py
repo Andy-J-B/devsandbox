@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
-from ...common.types import AttemptId, ContextBundle, ModelConfig, NetworkPolicy, ResourceProfile, TaskSpec, TokenUsage
+from ..common.types import (
+    AttemptId,
+    ContextBundle,
+    ModelConfig,
+    NetworkPolicy,
+    ResourceProfile,
+    TaskSpec,
+    TokenUsage,
+)
 from ..gitmgr.interfaces import Workspace
 
 
@@ -35,6 +43,7 @@ class AgentRunResult(BaseModel):
     duration_seconds: float = 0.0
 
 
+@runtime_checkable
 class AgentAdapter(Protocol):
     """Protocol implemented by agent adapters (OpenCode first)."""
 
