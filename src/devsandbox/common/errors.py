@@ -1,0 +1,39 @@
+"""Typed error hierarchy for DevSandbox."""
+
+from __future__ import annotations
+
+
+class DevSandboxError(Exception):
+    """Base class for all DevSandbox errors."""
+
+
+class ConfigError(DevSandboxError):
+    """Raised when configuration is invalid."""
+
+
+class PolicyViolation(DevSandboxError):
+    """Raised when an operation violates security policy."""
+
+
+class SandboxError(DevSandboxError):
+    """Raised when sandbox container operations fail."""
+
+
+class GitError(DevSandboxError):
+    """Raised when git workspace / integration operations fail."""
+
+
+class ValidationError(DevSandboxError):
+    """Raised when validation checks fail or report an error."""
+
+
+class SpecError(DevSandboxError):
+    """Raised when a project spec cannot be loaded or is invalid."""
+
+
+class InvalidTransition(DevSandboxError):
+    """Raised when a task status transition is illegal or loses a CAS race."""
+
+
+class TaskNotFoundError(DevSandboxError):
+    """Raised when a task record cannot be found."""
