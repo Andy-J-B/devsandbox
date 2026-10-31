@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 from alembic import context
 from sqlalchemy import pool
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from devsandbox.db.models import Base
@@ -17,7 +19,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in offline mode."""
-    url = config.get_main_option("sqlalchemy.url")
+    url = cast(str, config.get_main_option("sqlalchemy.url"))
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -29,7 +31,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection) -> None:
+def do_run_migrations(connection: Connection) -> None:
     """Run migrations against a synchronous DBAPI connection."""
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
@@ -38,8 +40,9 @@ def do_run_migrations(connection) -> None:
 
 async def run_async_online() -> None:
     """Run migrations in online mode using an async engine."""
+    url = cast(str, config.get_main_option("sqlalchemy.url"))
     connectable = create_async_engine(
-        config.get_main_option("sqlalchemy.url"),
+        url,
         poolclass=pool.NullPool,
     )
     try:

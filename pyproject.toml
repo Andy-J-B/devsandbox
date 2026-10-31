@@ -41,6 +41,9 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "docker: integration tests requiring a real Docker daemon (skipped without one)",
+]
 
 [tool.ruff]
 line-length = 100
