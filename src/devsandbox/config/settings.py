@@ -83,7 +83,7 @@ class DevSandboxSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="DEVSANDBOX_",
-        env_file="devsandbox.toml",
+        env_file=(".env", "devsandbox.toml"),
         case_sensitive=False,
         extra="forbid",
     )

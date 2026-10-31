@@ -81,7 +81,10 @@ async def test_transition_cas_race_single_winner(db_engine) -> None:
     """20 concurrent READY->SCHEDULED transitions must yield exactly one winner."""
     maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
 
+    task_id: TaskId | None = None
+
     async def create_task() -> None:
+        nonlocal task_id
         async with maker() as session:
             task = TaskModel(
                 project_id="proj-1",
@@ -93,16 +96,19 @@ async def test_transition_cas_race_single_winner(db_engine) -> None:
             )
             session.add(task)
             await session.flush()
+            task_id = TaskId(task.id)
+            await session.commit()
 
     async def attempt() -> str:
         async with maker() as session:
             repo = TaskRepo(session)
+            assert task_id is not None
             try:
-                await repo.transition(
-                    TaskId("task-race"), [TaskStatus.READY], TaskStatus.SCHEDULED, "race"
-                )
+                await repo.transition(task_id, [TaskStatus.READY], TaskStatus.SCHEDULED, "race")
+                await session.commit()
                 return "ok"
             except InvalidTransition:
+                await session.rollback()
                 return "conflict"
 
     await create_task()

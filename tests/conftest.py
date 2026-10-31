@@ -57,10 +57,16 @@ def postgres_container():
 
 @pytest.fixture(scope="session")
 def postgres_url(postgres_container) -> str:
-    """Return the ephemeral Postgres connection URL."""
-    if postgres_container is None:
-        pytest.skip("testcontainers-postgres is unavailable")
-    return postgres_container.get_connection_url()
+    """Return the ephemeral Postgres connection URL.
+
+    Prefers a throwaway testcontainers instance; falls back to the configured
+    ``DEVSANDBOX_DATABASE_URL`` (local dev database) when Docker is unavailable.
+    """
+    if postgres_container is not None:
+        return postgres_container.get_connection_url()
+    from devsandbox.config import settings as settings_module
+
+    return settings_module.get_settings().database_url
 
 
 @pytest.fixture
@@ -72,6 +78,7 @@ async def db_engine(postgres_url):
 
     engine = create_async_engine(postgres_url)
     async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.drop_all)
         await connection.run_sync(Base.metadata.create_all)
     yield engine
     await engine.dispose()
@@ -79,9 +86,12 @@ async def db_engine(postgres_url):
 
 @pytest.fixture
 async def db_session(db_engine):
-    """Provide a session inside a single transaction."""
+    """Provide a session inside an autobegun transaction that is always rolled back."""
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
     maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
-    async with maker() as session, session.begin():
-        yield session
+    async with maker() as session:
+        try:
+            yield session
+        finally:
+            await session.rollback()
