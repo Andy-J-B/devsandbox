@@ -118,11 +118,12 @@ class RepoHandle(BaseModel):
     """A concrete repository handle bound to a project."""
 
     project_id: str
-    path: str
+    path: str  # bare "canonical" repo path on disk
     url: str | None = None
     ref: str = "main"
     main_branch: str = "main"
     staging_branch: str = ""
+    base_commit: str | None = None  # resolved base (main / staging head) commit sha
 
 
 class TokenUsage(BaseModel):

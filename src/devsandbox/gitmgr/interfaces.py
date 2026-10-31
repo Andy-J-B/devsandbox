@@ -51,6 +51,7 @@ class PushResult(BaseModel):
     pushed: bool = False
     remote_ref: str | None = None
     remote_commit: str | None = None
+    detail: str = ""
 
 
 @runtime_checkable
