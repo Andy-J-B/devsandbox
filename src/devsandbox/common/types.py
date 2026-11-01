@@ -179,12 +179,36 @@ class TaskSpec(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    """Model selection / budget for an agent run."""
+    """Model selection / budget for an agent run.
+
+    ``provider`` and ``model`` identify the model in OpenCode's
+    ``provider/model`` form.  ``name`` is kept as a backwards-compatible
+    fallback (and as the runtime label); when ``model`` is omitted the
+    adapter uses ``name`` as the model id.
+    """
 
     name: str = "opencode"
     provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    secret_ref: str | None = None
     max_tokens: int | None = None
     max_requests: int | None = None
+
+    @property
+    def model_id(self) -> str:
+        """Return the resolved model id (falls back to ``name``)."""
+        return self.model or self.name
+
+    @property
+    def provider_id(self) -> str:
+        """Return the resolved provider id (falls back to ``opencode``)."""
+        return self.provider or "opencode"
+
+    @property
+    def reference(self) -> str:
+        """Return OpenCode's ``provider/model`` reference."""
+        return f"{self.provider_id}/{self.model_id}"
 
 
 __all__ = [

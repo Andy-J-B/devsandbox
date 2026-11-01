@@ -7,8 +7,10 @@ results independently, and integrates validated work into a staging branch.
 
 ## Status
 
-Early scaffold. Plan 01 (foundation) is in progress; see `plans/` for the
-authoritative build plan and contracts.
+Plans 01–04 are implemented: foundation/config/DB/spec, Docker sandbox
+manager, git manager, and the agent adapter layer (OpenCode + deterministic
+fake agent). See `plans/` for the authoritative build plan and `docs/` for
+per-module documentation.
 
 ## Development
 

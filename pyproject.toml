@@ -44,6 +44,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "docker: integration tests requiring a real Docker daemon (skipped without one)",
+    "opencode: integration tests building/running the OpenCode agent image (opt-in)",
 ]
 
 [tool.ruff]

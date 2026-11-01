@@ -20,6 +20,8 @@ services:
     build:
       context: .
       dockerfile: docker/agent-base/Dockerfile
+      args:
+        OPENCODE_VERSION: "1.19.5"
     depends_on:
       postgres:
         condition: service_healthy

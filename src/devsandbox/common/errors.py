@@ -37,3 +37,7 @@ class InvalidTransition(DevSandboxError):
 
 class TaskNotFoundError(DevSandboxError):
     """Raised when a task record cannot be found."""
+
+
+class BudgetExceeded(DevSandboxError):
+    """Raised when a model inference budget would be exceeded."""

@@ -66,6 +66,22 @@ class Redactor:
 _redactor = Redactor()
 
 
+def get_redactor() -> Redactor:
+    """Return the process-wide redactor (used by secret providers and logging)."""
+    return _redactor
+
+
+def register_secret(value: str) -> None:
+    """Register a secret value with the process-wide redactor."""
+    _redactor.register_secret(value)
+
+
+def reset_redactor() -> None:
+    """Drop all registered secret values (mainly for tests)."""
+    global _redactor
+    _redactor = Redactor()
+
+
 def redact(value: Any) -> Any:
     """Redact ``value`` (deeply) using the global redactor."""
     return _redactor.redact(value)
