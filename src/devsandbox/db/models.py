@@ -162,6 +162,8 @@ class AttemptModel(Base):
     validation_report_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     failure_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     token_usage_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    peak_memory_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    peak_cpu_percent: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -169,7 +171,10 @@ class AttemptModel(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (Index("ix_attempts_task_id", "task_id"),)
+    __table_args__ = (
+        Index("ix_attempts_task_id", "task_id"),
+        Index("ix_attempts_status", "status"),
+    )
 
 
 class EventModel(Base):

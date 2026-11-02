@@ -73,3 +73,7 @@ class PlanLimitError(PlannerError):
 
 class LLMError(PlannerError):
     """Raised when an LLM call fails or returns unusable output."""
+
+
+class SchedulerError(DevSandboxError):
+    """Raised when scheduling, admission, or resource bookkeeping fails."""
