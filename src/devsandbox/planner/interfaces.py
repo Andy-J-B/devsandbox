@@ -1,4 +1,4 @@
-"""Planner protocol and task graph validation."""
+"""Planner and LLM-client protocols plus shared graph validation export."""
 
 from __future__ import annotations
 
@@ -6,33 +6,15 @@ from typing import Protocol, runtime_checkable
 
 from ..common.types import ProjectContext, RepoProfile
 from ..spec.models import ProjectSpec
-from .types import FailureRecord, GraphIssue, Plan, ProposedPlan, TaskDraft
+from .models import FailureRecord, LLMRequest, LLMResponse, Plan, ProposedPlan
+from .validate import validate_graph
 
 PlannerName = str
 
 
-def validate_graph(tasks: list[TaskDraft]) -> list[GraphIssue]:
-    """Validate a task graph and return the list of issues found."""
-    issues: list[GraphIssue] = []
-    keys: list[str] = []
-    for task in tasks:
-        if task.key in keys:
-            issues.append(GraphIssue(task_key=task.key, issue="duplicate task key"))
-        keys.append(task.key)
-
-    known = set(keys)
-    for task in tasks:
-        for dep in task.depends_on:
-            if dep == task.key:
-                issues.append(GraphIssue(task_key=task.key, issue="task depends on itself"))
-            if dep not in known:
-                issues.append(GraphIssue(task_key=task.key, issue=f"unknown dependency {dep}"))
-    return issues
-
-
 @runtime_checkable
 class Planner(Protocol):
-    """Protocol implemented by the task planner."""
+    """Protocol implemented by every task planner."""
 
     async def generate_plan(
         self, spec: ProjectSpec, profile: RepoProfile, ctx: ProjectContext
@@ -41,3 +23,13 @@ class Planner(Protocol):
     async def replan(
         self, project_id: str, plan: Plan, failures: list[FailureRecord]
     ) -> ProposedPlan: ...
+
+
+@runtime_checkable
+class LLMClient(Protocol):
+    """Minimal OpenAI-compatible chat completion client."""
+
+    async def complete(self, request: LLMRequest) -> LLMResponse: ...
+
+
+__all__ = ["LLMClient", "Planner", "PlannerName", "validate_graph"]

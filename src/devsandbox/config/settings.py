@@ -71,6 +71,41 @@ class AgentConfig(BaseModel):
     model_budget: ModelBudget = Field(default_factory=ModelBudget)
 
 
+class PlannerConfig(BaseModel):
+    """Planning limits and defaults (owned by plan 06)."""
+
+    max_tasks: int = 100
+    max_depth: int = 12
+    max_task_timeout_seconds: int = 7200
+    default_task_timeout_seconds: int = 1800
+    max_replans: int = 2
+    min_priority: int = 0
+    max_priority: int = 100
+    max_expected_files: int = 200
+    planner_version: str = "1.0"
+
+    @field_validator("max_tasks", "max_depth", "max_task_timeout_seconds", "max_replans")
+    @classmethod
+    def _positive_int(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("planner limits must be >= 1")
+        return value
+
+    @field_validator("default_task_timeout_seconds")
+    @classmethod
+    def _default_timeout_positive(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("default_task_timeout_seconds must be > 0")
+        return value
+
+    @field_validator("max_priority")
+    @classmethod
+    def _priority_range(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("max_priority must be >= 0")
+        return value
+
+
 class SecretRef(BaseModel):
     """Reference to a secret: host env var name or file path."""
 
@@ -94,6 +129,7 @@ class DevSandboxSettings(BaseSettings):
     retries: RetriesConfig = RetriesConfig()
     security: SecurityConfig = SecurityConfig()
     agent: AgentConfig = AgentConfig()
+    planner: PlannerConfig = PlannerConfig()
     secrets: dict[str, SecretRef] = Field(default_factory=dict)
 
 

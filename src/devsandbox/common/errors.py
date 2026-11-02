@@ -45,3 +45,31 @@ class TaskNotFoundError(DevSandboxError):
 
 class BudgetExceeded(DevSandboxError):
     """Raised when a model inference budget would be exceeded."""
+
+
+class PlannerError(DevSandboxError):
+    """Raised when planning fails or produces an unusable plan."""
+
+
+class PlanNotFoundError(DevSandboxError):
+    """Raised when a plan record cannot be found."""
+
+
+class ProjectNotFoundError(DevSandboxError):
+    """Raised when a project record cannot be found."""
+
+
+class PlanStateError(DevSandboxError):
+    """Raised when a plan lifecycle operation is illegal for the current state."""
+
+
+class PlanValidationError(PlannerError):
+    """Raised when a plan fails graph validation."""
+
+
+class PlanLimitError(PlannerError):
+    """Raised when a plan would exceed a configured planning limit."""
+
+
+class LLMError(PlannerError):
+    """Raised when an LLM call fails or returns unusable output."""

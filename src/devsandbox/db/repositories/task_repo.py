@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...common.errors import InvalidTransition, TaskNotFoundError
@@ -49,6 +49,52 @@ class TaskRepo:
         self.session.add(task)
         await self.session.flush()
         return task
+
+    async def list_for_plan(self, plan_id: str) -> list[TaskModel]:
+        """Return all tasks in a plan ordered by insertion id."""
+        result = await self.session.execute(
+            select(TaskModel).where(TaskModel.plan_id == plan_id).order_by(TaskModel.id)
+        )
+        return list(result.scalars().all())
+
+    async def get_by_key(self, plan_id: str, key: str) -> TaskModel | None:
+        """Return the task with ``key`` inside a plan."""
+        result = await self.session.execute(
+            select(TaskModel).where(TaskModel.plan_id == plan_id, TaskModel.key == key)
+        )
+        return result.scalar_one_or_none()
+
+    async def dependencies_for_task(self, task_id: str) -> list[str]:
+        """Return dependency task ids for one task."""
+        result = await self.session.execute(
+            select(TaskDependencyModel.depends_on_task_id).where(
+                TaskDependencyModel.task_id == task_id
+            )
+        )
+        return list(result.scalars().all())
+
+    async def add_dependency(self, task_id: str, depends_on_task_id: str) -> None:
+        """Create a dependency edge."""
+        self.session.add(
+            TaskDependencyModel(task_id=task_id, depends_on_task_id=depends_on_task_id)
+        )
+        await self.session.flush()
+
+    async def delete_for_plan(self, plan_id: str) -> None:
+        """Delete all tasks and dependency edges belonging to a plan."""
+        task_ids = select(TaskModel.id).where(TaskModel.plan_id == plan_id)
+        await self.session.execute(
+            delete(TaskDependencyModel).where(TaskDependencyModel.task_id.in_(task_ids))
+        )
+        await self.session.execute(
+            delete(TaskDependencyModel).where(
+                TaskDependencyModel.depends_on_task_id.in_(
+                    select(TaskModel.id).where(TaskModel.plan_id == plan_id)
+                )
+            )
+        )
+        await self.session.execute(delete(TaskModel).where(TaskModel.plan_id == plan_id))
+        await self.session.flush()
 
     async def transition(
         self,

@@ -57,3 +57,17 @@ class SecurityPolicy:
     def max_retries(self, requested: int) -> int:
         """Return the effective retry budget (never above the policy default)."""
         return min(requested, self._settings.retries.default_max_retries)
+
+    def effective_timeout(self, requested: int) -> int:
+        """Return the effective task timeout (never above the planner maximum)."""
+        maximum = self._settings.planner.max_task_timeout_seconds
+        return min(requested, maximum)
+
+    def max_resources(self) -> ResourceProfile:
+        """Return the policy resource ceiling as a profile."""
+        return ResourceProfile(
+            cpu_cores=self.MAX_CPU_CORES,
+            memory_mb=self.MAX_MEMORY_MB,
+            disk_mb=self.MAX_DISK_MB,
+            pids_limit=self.MAX_PIDS_LIMIT,
+        )
