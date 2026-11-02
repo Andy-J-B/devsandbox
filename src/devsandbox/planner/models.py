@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..common.types import CheckSpec, ResourceProfile, TokenUsage
 
@@ -60,6 +60,22 @@ class TaskDraft(BaseModel):
     resources: ResourceProfile = Field(default_factory=ResourceProfile)
     timeout_seconds: int = 1800
     max_retries: int = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_resource_profile_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "resource_profile" in data:
+            if "resources" in data:
+                raise ValueError("use only one of 'resources' or 'resource_profile'")
+            updated = dict(data)
+            updated["resources"] = updated.pop("resource_profile")
+            return updated
+        return data
+
+    @property
+    def resource_profile(self) -> ResourceProfile:
+        """Alias used by the plan-06 task-draft vocabulary."""
+        return self.resources
 
 
 class ProposedPlan(BaseModel):

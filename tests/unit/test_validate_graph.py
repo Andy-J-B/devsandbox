@@ -8,7 +8,7 @@ import pytest
 from tests.planner_helpers import make_draft
 
 from devsandbox.common.types import CheckSpec, ResourceProfile
-from devsandbox.planner.models import ValidationLimits
+from devsandbox.planner.models import TaskDraft, ValidationLimits
 from devsandbox.planner.validate import (
     GraphCycleError,
     critical_path,
@@ -20,6 +20,19 @@ from devsandbox.planner.validate import (
 
 def _errors(issues):
     return [issue for issue in issues if issue.is_error]
+
+
+def test_task_draft_accepts_resource_profile_alias() -> None:
+    task = TaskDraft(
+        key="task-a",
+        title="Task A",
+        instructions="Do it",
+        success_criteria=["done"],
+        checks=[CheckSpec(name="tests", run="pytest -q")],
+        resource_profile=ResourceProfile(cpu_cores=2.0),
+    )
+    assert task.resources.cpu_cores == 2.0
+    assert task.resource_profile.cpu_cores == 2.0
 
 
 def test_valid_graph_has_no_issues() -> None:
