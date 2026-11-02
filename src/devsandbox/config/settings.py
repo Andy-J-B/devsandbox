@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class LimitsConfig(BaseModel):
     """Runtime resource limits and scheduling pressure thresholds."""
 
-    max_global_concurrency: int = 2
+    max_global_concurrency: int = 1
     max_project_concurrency: int = 1
     cpu_headroom_pct: float = 10.0
     mem_headroom_pct: float = 10.0
