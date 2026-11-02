@@ -1,0 +1,134 @@
+{
+  "assumptions": [
+    "Goals are ordered and should be implemented sequentially.",
+    "Detected validation commands are sufficient to verify the work."
+  ],
+  "generated_by": "template",
+  "planner_version": "1.0",
+  "rationale": "Generated one task per spec goal (2) using the deterministic template planner.",
+  "risks": [
+    "The template planner does not infer hidden dependencies between goals."
+  ],
+  "source_revision": "abc123",
+  "tasks": [
+    {
+      "checks": [
+        {
+          "name": "tests",
+          "required": true,
+          "run": "pytest -q",
+          "timeout_seconds": 300
+        },
+        {
+          "name": "lint",
+          "required": false,
+          "run": "ruff check .",
+          "timeout_seconds": 120
+        }
+      ],
+      "depends_on": [],
+      "description": "Deliver project goal: Add feature A",
+      "expected_files": [],
+      "instructions": "Goal: Add feature A\n\nProject: golden-demo\n\nRepository: golden-demo\nLanguages: python\nFrameworks: pytest\nConventions:\n- Use type hints\nTest commands:\n- pytest -q\nAllowed languages: python\nRestricted paths: LICENSE\n\nRequirements:\n- Keep the API stable\n\nConstraints:\n- Python only\n\nKeep changes focused on this goal. Do not modify restricted paths. Commit your work in the workspace when finished.",
+      "key": "goal-1-add-feature-a",
+      "max_retries": 2,
+      "priority": 50,
+      "resources": {
+        "cpu_cores": 1.0,
+        "disk_mb": 4096,
+        "memory_mb": 2048,
+        "pids_limit": 512
+      },
+      "restricted_files": [
+        "LICENSE"
+      ],
+      "success_criteria": [
+        "Goal is implemented: Add feature A",
+        "All required validation checks pass"
+      ],
+      "timeout_seconds": 1800,
+      "title": "Add feature A"
+    },
+    {
+      "checks": [
+        {
+          "name": "tests",
+          "required": true,
+          "run": "pytest -q",
+          "timeout_seconds": 300
+        },
+        {
+          "name": "lint",
+          "required": false,
+          "run": "ruff check .",
+          "timeout_seconds": 120
+        }
+      ],
+      "depends_on": [
+        "goal-1-add-feature-a"
+      ],
+      "description": "Deliver project goal: Fix bug B",
+      "expected_files": [],
+      "instructions": "Goal: Fix bug B\n\nProject: golden-demo\n\nRepository: golden-demo\nLanguages: python\nFrameworks: pytest\nConventions:\n- Use type hints\nTest commands:\n- pytest -q\nAllowed languages: python\nRestricted paths: LICENSE\n\nRequirements:\n- Keep the API stable\n\nConstraints:\n- Python only\n\nKeep changes focused on this goal. Do not modify restricted paths. Commit your work in the workspace when finished.",
+      "key": "goal-2-fix-bug-b",
+      "max_retries": 2,
+      "priority": 50,
+      "resources": {
+        "cpu_cores": 1.0,
+        "disk_mb": 4096,
+        "memory_mb": 2048,
+        "pids_limit": 512
+      },
+      "restricted_files": [
+        "LICENSE"
+      ],
+      "success_criteria": [
+        "Goal is implemented: Fix bug B",
+        "All required validation checks pass"
+      ],
+      "timeout_seconds": 1800,
+      "title": "Fix bug B"
+    },
+    {
+      "checks": [
+        {
+          "name": "tests",
+          "required": true,
+          "run": "pytest -q",
+          "timeout_seconds": 300
+        },
+        {
+          "name": "lint",
+          "required": false,
+          "run": "ruff check .",
+          "timeout_seconds": 120
+        }
+      ],
+      "depends_on": [
+        "goal-1-add-feature-a",
+        "goal-2-fix-bug-b"
+      ],
+      "description": "Verify the integrated result against the project requirements.",
+      "expected_files": [],
+      "instructions": "Verify the integrated result of all completed tasks.\n\nProject: golden-demo\n\nRepository: golden-demo\nLanguages: python\nFrameworks: pytest\nConventions:\n- Use type hints\nTest commands:\n- pytest -q\nAllowed languages: python\nRestricted paths: LICENSE\n\nRequirements:\n- Keep the API stable\n\nRun every required validation command and fix only issues introduced by the plan. Do not modify restricted paths.",
+      "key": "final-verification",
+      "max_retries": 2,
+      "priority": 10,
+      "resources": {
+        "cpu_cores": 1.0,
+        "disk_mb": 4096,
+        "memory_mb": 2048,
+        "pids_limit": 512
+      },
+      "restricted_files": [
+        "LICENSE"
+      ],
+      "success_criteria": [
+        "All required validation checks pass on the integrated result",
+        "Project goals and requirements are satisfied"
+      ],
+      "timeout_seconds": 1800,
+      "title": "Final integration verification"
+    }
+  ]
+}
