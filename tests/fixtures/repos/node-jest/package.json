@@ -1,0 +1,13 @@
+{
+  "name": "fixture-node",
+  "private": true,
+  "packageManager": "npm@10.0.0",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "test": "jest",
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint ."
+  },
+  "dependencies": {"react": "^18.0.0"},
+  "devDependencies": {"jest": "^29.0.0", "typescript": "^5.0.0", "eslint": "^8.0.0"}
+}

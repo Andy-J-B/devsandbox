@@ -27,6 +27,10 @@ class ValidationError(DevSandboxError):
     """Raised when validation checks fail or report an error."""
 
 
+class ContextError(DevSandboxError):
+    """Raised when context analysis or artifact generation fails."""
+
+
 class SpecError(DevSandboxError):
     """Raised when a project spec cannot be loaded or is invalid."""
 

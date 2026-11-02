@@ -1,0 +1,8 @@
+{
+  "name": "fixture-monorepo-web",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {"test": "jest", "build": "vite build", "lint": "eslint ."},
+  "dependencies": {"react": "^18.0.0"},
+  "devDependencies": {"jest": "^29.0.0"}
+}

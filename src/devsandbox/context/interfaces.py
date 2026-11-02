@@ -10,6 +10,7 @@ from ..common.types import (
     RepoHandle,
     RepoProfile,
     TaskOutcome,
+    TaskOutcomeNote,
     TaskSpec,
 )
 
@@ -29,5 +30,5 @@ class ContextManager(Protocol):
     async def is_stale(self, artifact_id: str, current_revision: str) -> bool: ...
 
     async def record_task_outcome(
-        self, project_id: str, task_id: str, outcome: TaskOutcome
+        self, project_id: str, task_id: str, outcome: TaskOutcome | TaskOutcomeNote
     ) -> None: ...

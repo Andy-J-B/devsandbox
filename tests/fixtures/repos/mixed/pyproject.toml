@@ -1,0 +1,7 @@
+[project]
+name = "fixture-mixed-api"
+version = "0.1.0"
+dependencies = ["fastapi>=0.110", "pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

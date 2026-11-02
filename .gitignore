@@ -220,3 +220,6 @@ __marimo__/
 .streamlit/secrets.toml
 plans/
 .DS_store
+
+# Test fixture intentionally contains a fake secret-bearing .env
+!tests/fixtures/repos/python-pytest/.env

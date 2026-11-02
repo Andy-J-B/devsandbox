@@ -221,6 +221,9 @@ class ContextArtifactModel(Base):
     kind: Mapped[str] = mapped_column(String(128), nullable=False)
     revision: Mapped[str] = mapped_column(String(64), nullable=False)
     content_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    generated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    depends_on_paths_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
