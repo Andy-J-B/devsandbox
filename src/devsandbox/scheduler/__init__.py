@@ -9,6 +9,7 @@ from .admission import (
     sum_resource_profiles,
 )
 from .config import SchedulerConfig
+from .events import SCHEDULE_DECISION_EVENT, record_decisions
 from .guard import ResourceGuard
 from .interfaces import ResourceMonitor, Scheduler
 from .models import (
@@ -36,6 +37,7 @@ from .scheduler import (
 )
 
 __all__ = [
+    "SCHEDULE_DECISION_EVENT",
     "TERMINAL_ATTEMPT_STATUSES",
     "AdmissionController",
     "CommittedResources",
@@ -60,6 +62,7 @@ __all__ = [
     "SchedulingLimits",
     "SchedulingSnapshot",
     "ordered_tasks",
+    "record_decisions",
     "select_decisions",
     "sum_resource_profiles",
     "update_deferral_counts",

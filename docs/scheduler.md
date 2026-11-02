@@ -82,6 +82,10 @@ for decision in decisions:
         ...  # record decision.reason_code in the event payload
 ```
 
+`record_decisions(session, snapshot, decisions)` appends one `SCHEDULE_DECISION`
+event per decision (action, reason code, human reason), so every defer is
+explainable from the audit log without storing scheduler memory.
+
 ## Resource monitor
 
 `PsutilResourceMonitor.sample()` produces `HostResources` with:

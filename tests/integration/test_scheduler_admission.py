@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from devsandbox.common.errors import SchedulerError
@@ -11,8 +13,17 @@ from devsandbox.scheduler.admission import (
     AdmissionController,
     sum_resource_profiles,
 )
+from devsandbox.scheduler.events import record_decisions
 from devsandbox.scheduler.guard import ResourceGuard
-from devsandbox.scheduler.models import CommittedResources, GuardDecision, PressureState
+from devsandbox.scheduler.models import (
+    CommittedResources,
+    DeferReason,
+    GuardDecision,
+    PressureState,
+    ReadyTask,
+    ScheduleDecision,
+    SchedulingSnapshot,
+)
 
 
 async def add_task(
@@ -141,3 +152,27 @@ def test_sum_resource_profiles_handles_none_and_corrupt_values() -> None:
     assert total.cpu_cores == 5.0
     assert total.memory_mb == 4396
     assert total.disk_mb == 8692
+
+
+async def test_record_decisions_appends_audit_events(db_session) -> None:
+    from devsandbox.common.time import utcnow
+
+    snapshot = SchedulingSnapshot(
+        now=utcnow(),
+        ready_tasks=[
+            ReadyTask(task_id="t1", project_id="proj-1"),
+            ReadyTask(task_id="t2", project_id="proj-2"),
+        ],
+    )
+    decisions = [
+        ScheduleDecision.launch("t1"),
+        ScheduleDecision.defer("t2", DeferReason.CONCURRENCY_GLOBAL, "global full"),
+    ]
+    events = await record_decisions(db_session, snapshot, decisions)
+    assert len(events) == 2
+    assert {event.project_id for event in events} == {"proj-1", "proj-2"}
+    assert all(event.type == "SCHEDULE_DECISION" for event in events)
+    payloads = [json.loads(event.payload_json or "{}") for event in events]
+    assert payloads[0]["action"] == "launch"
+    assert payloads[1]["reason_code"] == "CONCURRENCY_GLOBAL"
+    assert payloads[1]["reason"] == "global full"
