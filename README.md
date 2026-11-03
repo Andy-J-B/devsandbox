@@ -7,12 +7,15 @@ results independently, and integrates validated work into a staging branch.
 
 ## Status
 
-Plans 01–07 are implemented: foundation/config/DB/spec, Docker sandbox
+Plans 01–08 are implemented: foundation/config/DB/spec, Docker sandbox
 manager, git manager, the agent adapter layer (OpenCode + deterministic fake
-agent), repository analysis/context, the planner/task-graph lifecycle, and the
-deterministic scheduler/resource monitor.
+agent), repository analysis/context, the planner/task-graph lifecycle, the
+deterministic scheduler/resource monitor, and the orchestrator core (state
+machine, execution loop, retries/circuit breakers, crash recovery).
 See `plans/` for the authoritative build plan and `docs/` for per-module
-documentation.
+documentation; [`docs/orchestrator.md`](docs/orchestrator.md) and
+[`docs/recovery.md`](docs/recovery.md) cover execution and startup
+reconciliation.
 
 ## Development
 
