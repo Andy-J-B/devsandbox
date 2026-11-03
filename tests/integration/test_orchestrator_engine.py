@@ -20,8 +20,9 @@ from devsandbox.agents.interfaces import AgentRunResult
 from devsandbox.common.errors import OrchestratorAlreadyRunning, SandboxError
 from devsandbox.common.types import ProjectStatus, ResourceProfile, TaskStatus
 from devsandbox.config.policy import SecurityPolicy
+from devsandbox.config.settings import ModelBudget
 from devsandbox.db.models import TaskModel
-from devsandbox.db.repositories import AttemptRepo, EventRepo, IntegrationRepo
+from devsandbox.db.repositories import AttemptRepo, EventRepo, IntegrationRepo, ProjectRepo
 from devsandbox.gitmgr.interfaces import IntegrationResult
 from devsandbox.orchestrator.engine import OrchestratorEngine
 from devsandbox.orchestrator.models import OrchestratorConfig
@@ -438,3 +439,73 @@ async def test_concurrent_launch_enqueues_only_one_attempt(db_engine, settings) 
     async with maker() as session:
         attempts = await AttemptRepo(session).list_for_task(tasks["t-a"].id)
     assert len(attempts) == 1
+
+
+async def test_max_total_attempts_breaker_is_exact_under_concurrency(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    await seed_project(maker, make_spec(), keys=["t-a", "t-b"])
+    agent = FakeAgentAdapter()
+    agent.queue_result(_result())
+    engine = _engine(
+        maker,
+        settings,
+        clock,
+        agent=agent,
+        config=OrchestratorConfig(
+            backoff_base_seconds=0.0,
+            backoff_max_seconds=0.0,
+            max_total_attempts=1,
+            idle_sleep_seconds=0.001,
+            tick_seconds=0.001,
+        ),
+        scheduler_config=SchedulerConfig(max_global_concurrency=2, max_project_concurrency=2),
+    )
+
+    await engine.run_until_idle()
+
+    # Two launches are offered in the same round; the reservation keeps the
+    # per-project attempt breaker exact and only one attempt reaches the agent.
+    assert len(agent.calls) == 1
+    project = await get_project(maker, "proj-1")
+    assert ProjectStatus(project.status) is ProjectStatus.PAUSED
+    async with maker() as session:
+        events = await EventRepo(session).list_for_project("proj-1", limit=200)
+    breaker = [event for event in events if event.type == "CIRCUIT_BREAKER"]
+    assert breaker
+    assert breaker[0].payload_json["reason"] == "max_total_attempts reached"
+
+
+async def test_model_budget_defers_every_launch(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    await seed_project(maker, make_spec(), keys=["t-a"])
+    limited = settings.model_copy(
+        update={
+            "agent": settings.agent.model_copy(update={"model_budget": ModelBudget(max_tokens=0)})
+        }
+    )
+    agent = FakeAgentAdapter()
+    agent.queue_result(_result())
+    engine = _engine(maker, limited, clock, agent=agent)
+
+    await engine.run_until_idle()
+
+    assert agent.calls == []
+    assert await _project_status(maker) is ProjectStatus.EXECUTING
+    async with maker() as session:
+        events = await EventRepo(session).list_for_project("proj-1", limit=200)
+    deferrals = [
+        event
+        for event in events
+        if event.type == "SCHEDULE_DECISION"
+        and event.payload_json.get("reason_code") == "MODEL_BUDGET"
+    ]
+    assert deferrals
+
+
+async def _project_status(maker) -> ProjectStatus:
+    async with maker() as session:
+        project = await ProjectRepo(session).get("proj-1")
+    assert project is not None
+    return ProjectStatus(project.status)

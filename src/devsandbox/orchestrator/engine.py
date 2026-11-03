@@ -206,6 +206,11 @@ class OrchestratorEngine:
         self._integration_locks: dict[str, asyncio.Lock] = {}
         self._replan_counts: dict[str, int] = {}
         self._launching: set[str] = set()
+        # Project id for each in-flight task plus attempts reserved by a launch
+        # that has not committed its attempts row yet.  The reservation keeps
+        # the per-project attempt circuit breaker exact under concurrency.
+        self._running_project: dict[str, str] = {}
+        self._reserved_attempts: dict[str, int] = {}
         self._last_round_at: datetime | None = None
         self._last_pressure = "ok"
 
@@ -462,8 +467,6 @@ class OrchestratorEngine:
                 for index, task in enumerate(tasks):
                     status = TaskStatus(task.status)
                     if status is TaskStatus.READY:
-                        if await self._budget_exceeded(project_id, session=session):
-                            continue
                         ready.append(
                             ReadyTask(
                                 task_id=task.id,
@@ -548,6 +551,7 @@ class OrchestratorEngine:
             return False
         async with self._session_factory() as session:
             attempts = await AttemptRepo(session).count_for_project(task.project_id)
+            reserved = self._reserved_attempts.get(task.project_id, 0)
             over_budget = await self._budget_exceeded(task.project_id, session=session)
             if over_budget:
                 await events.emit_event(
@@ -583,6 +587,11 @@ class OrchestratorEngine:
                     )
                 await session.commit()
                 return False
+            if attempts + reserved >= self.config.max_total_attempts:
+                # At capacity because launched attempts have not persisted their
+                # rows yet; leave the task queued for the next round.
+                return False
+        self._reserve_attempt(task.id, task.project_id)
         runner = asyncio.create_task(
             self._attempt_runner(task.id),
             name=f"ds-attempt-{task.id}",
@@ -590,6 +599,21 @@ class OrchestratorEngine:
         self._running[task.id] = runner
         runner.add_done_callback(lambda _: self._wake.set())
         return True
+
+    def _reserve_attempt(self, task_id: str, project_id: str) -> None:
+        self._running_project[task_id] = project_id
+        self._reserved_attempts[project_id] = self._reserved_attempts.get(project_id, 0) + 1
+
+    def _release_attempt_reservation(self, task_id: str) -> None:
+        """Release a launch reservation once the attempts row is committed."""
+        project_id = self._running_project.pop(task_id, None)
+        if project_id is None:
+            return
+        remaining = self._reserved_attempts.get(project_id, 0) - 1
+        if remaining > 0:
+            self._reserved_attempts[project_id] = remaining
+        else:
+            self._reserved_attempts.pop(project_id, None)
 
     # ================================================================== pipeline
     async def _attempt_runner(self, task_id: str, resume: RecoveryAction | None = None) -> None:
@@ -606,6 +630,7 @@ class OrchestratorEngine:
         except Exception as exc:  # never let an attempt crash the loop
             await asyncio.shield(self._unexpected_failure(task_id, exc))
         finally:
+            self._release_attempt_reservation(task_id)
             self._running.pop(task_id, None)
             self._wake.set()
 
@@ -657,6 +682,8 @@ class OrchestratorEngine:
             )
             await session.commit()
             base_attempt = updated.attempt_count
+        # The attempts row is now durable; the DB count includes it.
+        self._release_attempt_reservation(str(task_id))
         await self.faults.checkpoint("after_attempt_created")
 
         # 2. Workspace + context bundle (recoverable: SCHEDULED -> READY on infra).
