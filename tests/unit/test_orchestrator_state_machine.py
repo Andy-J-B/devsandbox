@@ -65,9 +65,7 @@ EXPECTED_LEGAL: frozenset[tuple[TaskStatus, TaskStatus]] = frozenset(
 
 def test_legal_pairs_match_authoritative_expectations() -> None:
     actual = {
-        (source, target)
-        for source, targets in TASK_TRANSITIONS.items()
-        for target in targets
+        (source, target) for source, targets in TASK_TRANSITIONS.items() for target in targets
     }
     assert actual == EXPECTED_LEGAL
 

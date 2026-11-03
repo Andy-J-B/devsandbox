@@ -129,9 +129,7 @@ def test_infra_failure_does_not_consume_retry_budget_but_has_a_cap() -> None:
     assert not record.counts_against_budget
     assert classifier.decide(record, attempt_count=1, max_retries=0).action is FailureAction.RETRY
     assert (
-        classifier.decide(
-            record, attempt_count=1, max_retries=0, infra_failures=2
-        ).action
+        classifier.decide(record, attempt_count=1, max_retries=0, infra_failures=2).action
         is FailureAction.FAIL
     )
 
