@@ -118,6 +118,9 @@ class TaskModel(Base):
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=1800)
     max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    retry_not_before: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     current_attempt_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     failure_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -211,7 +214,7 @@ class IntegrationModel(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     staging_commit_before: Mapped[str | None] = mapped_column(String(64), nullable=True)
     staging_commit_after: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    conflict_files_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    conflict_files_json: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

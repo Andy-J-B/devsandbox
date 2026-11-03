@@ -77,3 +77,19 @@ class LLMError(PlannerError):
 
 class SchedulerError(DevSandboxError):
     """Raised when scheduling, admission, or resource bookkeeping fails."""
+
+
+class OrchestratorError(DevSandboxError):
+    """Raised when orchestration cannot proceed (lease, lifecycle, recovery)."""
+
+
+class OrchestratorAlreadyRunning(OrchestratorError):
+    """Raised when a second orchestrator tries to acquire the active lease."""
+
+
+class LeaseLostError(OrchestratorError):
+    """Raised when the orchestrator lease is lost mid-run."""
+
+
+class RecoveryError(OrchestratorError):
+    """Raised when crash recovery cannot converge to a safe state."""

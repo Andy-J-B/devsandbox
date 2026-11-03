@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...common.errors import InvalidTransition, TaskNotFoundError
@@ -14,13 +13,6 @@ from ...common.ids import TaskId
 from ...common.time import utcnow
 from ...common.types import TaskStatus
 from ..models import EventModel, TaskDependencyModel, TaskModel
-
-_TERMINAL_STATUSES = (
-    TaskStatus.COMPLETED,
-    TaskStatus.FAILED,
-    TaskStatus.BLOCKED,
-    TaskStatus.CANCELLED,
-)
 
 
 class TaskRepo:
@@ -56,6 +48,39 @@ class TaskRepo:
             select(TaskModel).where(TaskModel.plan_id == plan_id).order_by(TaskModel.id)
         )
         return list(result.scalars().all())
+
+    async def list_for_project(
+        self,
+        project_id: str,
+        *,
+        statuses: list[TaskStatus] | None = None,
+        plan_id: str | None = None,
+    ) -> list[TaskModel]:
+        """Return tasks for a project, optionally filtered by status/plan."""
+        stmt = select(TaskModel).where(TaskModel.project_id == project_id)
+        if statuses is not None:
+            stmt = stmt.where(TaskModel.status.in_([status.value for status in statuses]))
+        if plan_id is not None:
+            stmt = stmt.where(TaskModel.plan_id == plan_id)
+        stmt = stmt.order_by(TaskModel.created_at, TaskModel.id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_by_status(self, statuses: list[TaskStatus]) -> list[TaskModel]:
+        """Return all tasks in any of ``statuses`` (across projects)."""
+        result = await self.session.execute(
+            select(TaskModel)
+            .where(TaskModel.status.in_([status.value for status in statuses]))
+            .order_by(TaskModel.created_at, TaskModel.id)
+        )
+        return list(result.scalars().all())
+
+    async def count_for_project(self, project_id: str) -> int:
+        """Return the number of task rows for a project."""
+        result = await self.session.execute(
+            select(func.count()).select_from(TaskModel).where(TaskModel.project_id == project_id)
+        )
+        return int(result.scalar_one())
 
     async def get_by_key(self, plan_id: str, key: str) -> TaskModel | None:
         """Return the task with ``key`` inside a plan."""
@@ -155,7 +180,7 @@ class TaskRepo:
             type="task.transition",
             from_state=current.value,
             to_state=to_state.value,
-            payload_json=json.dumps({"reason": reason, **fields}),
+            payload_json={"reason": reason, **fields},
             at=utcnow(),
         )
         self.session.add(event)
@@ -192,19 +217,40 @@ class TaskRepo:
                 ready.append(task)
         return ready
 
-    async def mark_dependents_blocked(self, task_id: str) -> list[TaskModel]:
-        """Mark non-terminal dependents of ``task_id`` as BLOCKED."""
-        stmt = (
-            select(TaskModel)
-            .join(TaskDependencyModel, TaskModel.id == TaskDependencyModel.task_id)
-            .where(TaskDependencyModel.depends_on_task_id == task_id)
-            .where(TaskModel.status.not_in([s.value for s in _TERMINAL_STATUSES]))
-        )
-        result = await self.session.execute(stmt)
-        dependents = list(result.scalars().all())
-        for task in dependents:
-            task.status = TaskStatus.BLOCKED.value
-            task.blocked_reason = "dependency failed"
-            task.version = task.version + 1
-            task.updated_at = utcnow()
-        return dependents
+    async def mark_dependents_blocked(
+        self, task_id: str, *, reason: str = "dependency failed"
+    ) -> list[TaskModel]:
+        """Mark transitive dependents of ``task_id`` as BLOCKED.
+
+        Every status change goes through :meth:`transition` so the CAS and
+        audit guarantees hold for blocked propagation too (00 §7).
+        """
+        blocked: list[TaskModel] = []
+        frontier = [task_id]
+        seen: set[str] = set()
+        while frontier:
+            current = frontier.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            stmt = (
+                select(TaskModel)
+                .join(TaskDependencyModel, TaskModel.id == TaskDependencyModel.task_id)
+                .where(TaskDependencyModel.depends_on_task_id == current)
+                .where(TaskModel.status.in_([TaskStatus.PENDING.value, TaskStatus.READY.value]))
+            )
+            dependents = list((await self.session.execute(stmt)).scalars().all())
+            for task in dependents:
+                try:
+                    updated = await self.transition(
+                        TaskId(task.id),
+                        [TaskStatus.PENDING, TaskStatus.READY],
+                        TaskStatus.BLOCKED,
+                        reason,
+                        blocked_reason=reason,
+                    )
+                except InvalidTransition:
+                    continue
+                blocked.append(updated)
+                frontier.append(task.id)
+        return blocked
