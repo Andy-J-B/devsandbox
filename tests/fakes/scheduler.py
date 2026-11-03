@@ -1,10 +1,16 @@
-"""Fake resource monitor implementing the ResourceMonitor protocol."""
+"""Fake scheduler and resource monitor implementing the plan-07 protocols."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
-from devsandbox.scheduler.interfaces import HostResources, PressureState
+from devsandbox.scheduler.interfaces import (
+    DecisionAction,
+    HostResources,
+    PressureState,
+    ScheduleDecision,
+    SchedulingSnapshot,
+)
 
 
 def _default_sample() -> HostResources:
@@ -75,3 +81,27 @@ class FakeResourceMonitor:
     async def history(self, seconds: int | None = None) -> list[HostResources]:
         """Return every sample served so far."""
         return list(self.samples)
+
+
+class FakeScheduler:
+    """Launch every ready task unless a callback scripts otherwise."""
+
+    def __init__(
+        self,
+        callback: Callable[[SchedulingSnapshot], list[ScheduleDecision]] | None = None,
+    ) -> None:
+        self._callback = callback
+        self.snapshots: list[SchedulingSnapshot] = []
+
+    async def select(self, snapshot: SchedulingSnapshot) -> list[ScheduleDecision]:
+        """Return launch decisions for all ready tasks."""
+        self.snapshots.append(snapshot)
+        if self._callback is not None:
+            return self._callback(snapshot)
+        return [
+            ScheduleDecision(task_id=task.task_id, action=DecisionAction.LAUNCH)
+            for task in snapshot.ready_tasks
+        ]
+
+
+__all__ = ["FakeResourceMonitor", "FakeScheduler"]

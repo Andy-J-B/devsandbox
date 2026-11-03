@@ -7,7 +7,7 @@ from .context import FakeContextManager
 from .gitmgr import FakeGitManager
 from .planner import FakePlanner
 from .sandbox import FakeSandboxManager
-from .scheduler import FakeResourceMonitor
+from .scheduler import FakeResourceMonitor, FakeScheduler
 from .validation import FakeValidator
 
 __all__ = [
@@ -17,5 +17,6 @@ __all__ = [
     "FakePlanner",
     "FakeResourceMonitor",
     "FakeSandboxManager",
+    "FakeScheduler",
     "FakeValidator",
 ]

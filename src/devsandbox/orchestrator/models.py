@@ -140,6 +140,7 @@ class RecoveryActionKind(StrEnum):
     RETRY_INFRA = "retry_infra"
     RESUME_COLLECT = "resume_collect"
     RERUN_VALIDATION = "rerun_validation"
+    RESUME_VALIDATION_DECISION = "resume_validation_decision"
     RESUME_INTEGRATION = "resume_integration"
     RESET_AND_RETRY = "reset_and_retry"
     MARK_COMPLETED = "mark_completed"
