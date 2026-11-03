@@ -346,6 +346,21 @@ class GitManagerImpl:
             return None
         return res.stdout.strip() or None
 
+    async def is_ancestor(self, repo: RepoHandle, ancestor: str, descendant: str) -> bool:
+        """Return whether ``ancestor`` is reachable from ``descendant``.
+
+        Orchestrator recovery uses this to decide whether a crashed
+        integration's candidate commit is already contained in staging.
+        """
+        if not ancestor or not descendant:
+            return False
+        result = await run_git(
+            ["merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=repo.path,
+            check=False,
+        )
+        return result.returncode == 0
+
     async def reset_staging_to(self, repo: RepoHandle, commit: str) -> None:
         """CAS-protected rollback of staging to a known earlier commit.
 

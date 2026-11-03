@@ -5,6 +5,7 @@ Owned by plan 01 stubs, completed by plan 03.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from devsandbox.common.ids import AttemptId
@@ -28,6 +29,9 @@ class FakeGitManager:
         self.staging_heads: dict[str, list[str | None]] = {}
         self.commit_failures: dict[str, int] = {}  # project_id -> remaining failures
         self.calls: list[dict[str, Any]] = []
+        self.prepare_delay_seconds: float = 0.0
+        self.max_concurrent_prepares: int = 0
+        self._active_prepares: int = 0
 
     def _staging_heads(self, project_id: str) -> list[str | None]:
         return self.staging_heads.setdefault(project_id, [None])
@@ -100,6 +104,13 @@ class FakeGitManager:
         heads = self._staging_heads(repo.project_id)
         return heads[0] if heads else None
 
+    async def is_ancestor(self, repo: RepoHandle, ancestor: str, descendant: str) -> bool:
+        """Return whether the fake staging history contains ``ancestor``."""
+        self.calls.append({"op": "is_ancestor", "ancestor": ancestor, "descendant": descendant})
+        if ancestor == descendant:
+            return True
+        return descendant.startswith(f"{ancestor}-")
+
     async def reset_staging_to(self, repo: RepoHandle, commit: str) -> None:
         """Reset staging to a commit."""
         self.calls.append({"op": "reset_staging_to", "commit": commit})
@@ -117,29 +128,36 @@ class FakeGitManager:
     async def prepare_integration(self, repo: RepoHandle, ws: Workspace, cs: ChangeSet) -> Any:
         """Prepare a fake integration candidate (scriptable conflict)."""
         self.calls.append({"op": "prepare_integration", "attempt_id": str(ws.attempt_id)})
-        if self.integrations:
-            result = self.integrations.pop(0)
+        self._active_prepares += 1
+        self.max_concurrent_prepares = max(self.max_concurrent_prepares, self._active_prepares)
+        try:
+            if self.prepare_delay_seconds:
+                await asyncio.sleep(self.prepare_delay_seconds)
+            if self.integrations:
+                result = self.integrations.pop(0)
+                return IntegrationCandidate(
+                    attempt_id=ws.attempt_id,
+                    repo=repo,
+                    staging_before=await self.staging_head(repo),
+                    staging_after=result.staging_commit or "candidate",
+                    conflicting_files=result.conflicting_files,
+                    conflicted=result.status == "conflict",
+                    integration_ref="refs/devsandbox/integration-candidate/fake",
+                )
+            heads = self._staging_heads(repo.project_id)
+            before = heads[0] if heads else None
+            after = before + "-child" if before else "candidate-commit"
             return IntegrationCandidate(
                 attempt_id=ws.attempt_id,
                 repo=repo,
-                staging_before=await self.staging_head(repo),
-                staging_after=result.staging_commit or "candidate",
-                conflicting_files=result.conflicting_files,
-                conflicted=result.status == "conflict",
+                staging_before=before,
+                staging_after=after,
+                conflicting_files=[],
+                conflicted=False,
                 integration_ref="refs/devsandbox/integration-candidate/fake",
             )
-        heads = self._staging_heads(repo.project_id)
-        before = heads[0] if heads else None
-        after = before + "-child" if before else "candidate-commit"
-        return IntegrationCandidate(
-            attempt_id=ws.attempt_id,
-            repo=repo,
-            staging_before=before,
-            staging_after=after,
-            conflicting_files=[],
-            conflicted=False,
-            integration_ref="refs/devsandbox/integration-candidate/fake",
-        )
+        finally:
+            self._active_prepares -= 1
 
     async def commit_integration(self, candidate: Any) -> IntegrationResult:
         """Commit a fake integration candidate."""
