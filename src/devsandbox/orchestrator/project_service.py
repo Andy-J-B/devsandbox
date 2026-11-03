@@ -262,10 +262,13 @@ class ProjectService:
         return await self._get_project(project_id)
 
     async def resume(self, project_id: str) -> ProjectModel:
-        """Resume a paused project."""
-        project = await self.resume_if_paused(project_id)
+        """Resume a paused project (idempotent; only emits when it was paused)."""
+        project = await self._get_project(project_id)
+        if ProjectStatus(project.status) is not ProjectStatus.PAUSED:
+            return project
+        resumed = await self.resume_if_paused(project_id)
         await self._event(project_id, events.PROJECT_RESUMED)
-        return project
+        return resumed
 
     async def resume_if_paused(self, project_id: str) -> ProjectModel:
         """Translate ``PAUSED -> EXECUTING`` without emitting the user event."""
