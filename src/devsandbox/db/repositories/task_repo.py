@@ -13,6 +13,7 @@ from ...common.ids import TaskId
 from ...common.time import utcnow
 from ...common.types import TaskStatus
 from ..models import EventModel, TaskDependencyModel, TaskModel
+from ._json import jsonable
 
 
 class TaskRepo:
@@ -180,7 +181,7 @@ class TaskRepo:
             type="task.transition",
             from_state=current.value,
             to_state=to_state.value,
-            payload_json={"reason": reason, **fields},
+            payload_json=jsonable({"reason": reason, **fields}),
             at=utcnow(),
         )
         self.session.add(event)

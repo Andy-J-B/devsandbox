@@ -13,6 +13,7 @@ from ...common.errors import InvalidTransition, ProjectNotFoundError
 from ...common.time import utcnow
 from ...common.types import ProjectStatus
 from ..models import EventModel, ProjectModel
+from ._json import jsonable
 
 
 class ProjectRepo:
@@ -108,7 +109,7 @@ class ProjectRepo:
                 type="project.transition",
                 from_state=current.value,
                 to_state=to_state.value,
-                payload_json={"reason": reason, **fields},
+                payload_json=jsonable({"reason": reason, **fields}),
                 at=utcnow(),
             )
         )
