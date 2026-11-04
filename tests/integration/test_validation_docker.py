@@ -65,7 +65,7 @@ def validator_image() -> str:
             str(_ROOT / "docker" / "validator-base" / "Dockerfile"),
             "-t",
             _IMAGE,
-            str(_ROOT),
+            str(_ROOT / "docker" / "validator-base"),
         ],
         capture_output=True,
         text=True,

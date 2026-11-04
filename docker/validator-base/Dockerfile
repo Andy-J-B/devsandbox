@@ -7,7 +7,7 @@
 # with other toolchains should use a project-specific validator image.
 #
 # Build with:
-#   docker build -f docker/validator-base/Dockerfile -t devsandbox/validator:latest .
+#   docker build -t devsandbox/validator:latest docker/validator-base
 
 FROM python:3.12-slim AS base
 

@@ -57,7 +57,7 @@ not active or that exceed `max_age_seconds` (janitor, plan 08).
 - `docker/validator-base/Dockerfile`: validation image (python, node, git,
   build-essential, pre-installed pytest/pytest-asyncio/ruff) so common Python
   checks run without network access. Build it with
-  `docker build -f docker/validator-base/Dockerfile -t devsandbox/validator:latest .`
+  `docker build -t devsandbox/validator:latest docker/validator-base`.
 - `ensure_image(image)` pulls the image when it is not present locally.
 
 ## Testing
