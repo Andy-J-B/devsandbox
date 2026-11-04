@@ -17,6 +17,7 @@ from devsandbox.orchestrator.failures import (
     normalize_failure_text,
 )
 from devsandbox.validation.interfaces import CheckResult, ValidationReport
+from devsandbox.validation.models import FailureKind as ValidationFailureKind
 
 
 def _classifier(**overrides) -> FailureClassifier:
@@ -177,6 +178,37 @@ def test_validation_failure_classification() -> None:
         classifier.decide(restricted, attempt_count=1, max_retries=5).action
         is FailureAction.NEEDS_ATTENTION
     )
+
+
+def test_validation_failure_carries_structured_retry_summary() -> None:
+    classifier = _classifier()
+    report = ValidationReport(
+        status="failed",
+        checks=[CheckResult(check="tests", status="failed", reason="boom")],
+        summary="pytest failed",
+        summary_for_retry="Validation failed for task task-1.\n- tests [test_failure]: boom",
+        failure_kind=ValidationFailureKind.TEST_FAILURE,
+    )
+    record = classifier.from_validation(report)
+    assert record.kind is FailureKind.VALIDATION_FAILURE
+    assert "Validation failed for task task-1" in record.summary
+    assert "tests [test_failure]" in record.summary
+
+
+def test_infrastructure_error_uses_retry_summary_and_skips_budget() -> None:
+    classifier = _classifier()
+    report = ValidationReport(
+        status="error",
+        summary="sandbox failed",
+        summary_for_retry=(
+            "Validation infrastructure error: sandbox failed. Retry without code changes."
+        ),
+        failure_kind=ValidationFailureKind.INFRA_ERROR,
+    )
+    record = classifier.from_validation(report)
+    assert record.kind is FailureKind.INFRA_ERROR
+    assert not record.counts_against_budget
+    assert "infrastructure" in record.summary.lower()
 
 
 def test_integration_failure_classification() -> None:

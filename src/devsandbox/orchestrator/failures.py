@@ -205,6 +205,9 @@ class FailureClassifier:
         """Classify a failed validation report."""
         text = report.summary or "validation failed"
         lower = text.lower()
+        # Feed the validator's structured retry summary to the next attempt
+        # (plan 09). Fall back to the human summary for manually built reports.
+        retry_text = report.summary_for_retry or text
         kind = FailureKind.VALIDATION_FAILURE
         retryable = True
         counts = True
@@ -212,7 +215,7 @@ class FailureClassifier:
         if report.status == "error":
             return self.make_record(
                 FailureKind.INFRA_ERROR,
-                text,
+                retry_text,
                 retryable=True,
                 counts_against_budget=False,
                 validation_kind="infra_error",
@@ -233,7 +236,7 @@ class FailureClassifier:
             attention = True
         if kind is FailureKind.INFRA_ERROR:
             counts = False
-        report_text = report.summary or (
+        report_text = retry_text or (
             "; ".join(
                 f"{check.check}: {'pass' if check.passed else 'fail'}" for check in report.checks
             )
