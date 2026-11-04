@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from devsandbox.common.types import NetworkPolicy, ResourceProfile
 from devsandbox.config.policy import SecurityPolicy
-from devsandbox.config.settings import DevSandboxSettings, RetriesConfig
+from devsandbox.config.settings import (
+    DevSandboxSettings,
+    RetriesConfig,
+    ValidationSettings,
+)
+from devsandbox.validation.config import ValidationConfig
 
 
 def test_settings_defaults() -> None:
@@ -65,3 +70,28 @@ def test_effective_resources_clamped_to_policy_maxima() -> None:
     assert effective.memory_mb <= SecurityPolicy.MAX_MEMORY_MB
     assert effective.disk_mb <= SecurityPolicy.MAX_DISK_MB
     assert effective.pids_limit <= SecurityPolicy.MAX_PIDS_LIMIT
+
+
+def test_validation_settings_reject_bad_limits() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ValidationSettings(max_output_bytes=0)
+    with pytest.raises(ValidationError):
+        ValidationSettings(assert_removal_threshold=-1)
+
+
+def test_validation_config_from_settings_and_overrides() -> None:
+    settings = DevSandboxSettings(
+        validation=ValidationSettings(
+            image="custom/validator:1",
+            max_output_bytes=1024,
+            tamper_mode="warn",
+        )
+    )
+    config = ValidationConfig.from_settings(settings, max_output_bytes=2048)
+    assert config.image == "custom/validator:1"
+    assert config.max_output_bytes == 2048
+    assert config.tamper_mode == "warn"
+    assert config.network.mode == "none"
