@@ -14,16 +14,38 @@
     {
       "checks": [
         {
+          "allowed_hosts": [],
+          "env": {},
+          "expected_exit_codes": [
+            0
+          ],
+          "failure_regex": null,
+          "junit_xml_path": null,
+          "kind": "other",
           "name": "tests",
+          "network": "none",
           "required": true,
           "run": "pytest -q",
-          "timeout_seconds": 300
+          "success_regex": null,
+          "timeout_seconds": 300,
+          "working_dir": "."
         },
         {
+          "allowed_hosts": [],
+          "env": {},
+          "expected_exit_codes": [
+            0
+          ],
+          "failure_regex": null,
+          "junit_xml_path": null,
+          "kind": "other",
           "name": "lint",
+          "network": "none",
           "required": false,
           "run": "ruff check .",
-          "timeout_seconds": 120
+          "success_regex": null,
+          "timeout_seconds": 120,
+          "working_dir": "."
         }
       ],
       "depends_on": [],
@@ -52,16 +74,38 @@
     {
       "checks": [
         {
+          "allowed_hosts": [],
+          "env": {},
+          "expected_exit_codes": [
+            0
+          ],
+          "failure_regex": null,
+          "junit_xml_path": null,
+          "kind": "other",
           "name": "tests",
+          "network": "none",
           "required": true,
           "run": "pytest -q",
-          "timeout_seconds": 300
+          "success_regex": null,
+          "timeout_seconds": 300,
+          "working_dir": "."
         },
         {
+          "allowed_hosts": [],
+          "env": {},
+          "expected_exit_codes": [
+            0
+          ],
+          "failure_regex": null,
+          "junit_xml_path": null,
+          "kind": "other",
           "name": "lint",
+          "network": "none",
           "required": false,
           "run": "ruff check .",
-          "timeout_seconds": 120
+          "success_regex": null,
+          "timeout_seconds": 120,
+          "working_dir": "."
         }
       ],
       "depends_on": [
@@ -92,16 +136,38 @@
     {
       "checks": [
         {
+          "allowed_hosts": [],
+          "env": {},
+          "expected_exit_codes": [
+            0
+          ],
+          "failure_regex": null,
+          "junit_xml_path": null,
+          "kind": "other",
           "name": "tests",
+          "network": "none",
           "required": true,
           "run": "pytest -q",
-          "timeout_seconds": 300
+          "success_regex": null,
+          "timeout_seconds": 300,
+          "working_dir": "."
         },
         {
+          "allowed_hosts": [],
+          "env": {},
+          "expected_exit_codes": [
+            0
+          ],
+          "failure_regex": null,
+          "junit_xml_path": null,
+          "kind": "other",
           "name": "lint",
+          "network": "none",
           "required": false,
           "run": "ruff check .",
-          "timeout_seconds": 120
+          "success_regex": null,
+          "timeout_seconds": 120,
+          "working_dir": "."
         }
       ],
       "depends_on": [

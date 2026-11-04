@@ -9,6 +9,7 @@ merges their findings into a single :class:`~devsandbox.common.types.RepoProfile
 from __future__ import annotations
 
 import re
+import shlex
 from collections.abc import Sequence
 from pathlib import PurePosixPath
 from typing import Any
@@ -421,7 +422,7 @@ def _spec_commands(
     commands: list[DetectedCommand] = []
     for index, check in enumerate(validation_commands or ()):
         if isinstance(check, CheckSpec):
-            command = check.run
+            command = shlex.join(check.run) if isinstance(check.run, list) else check.run
             name = check.name
         else:
             command = check

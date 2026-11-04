@@ -1,29 +1,40 @@
-"""Validator protocol and validation report types."""
+"""Validator protocol and validation report types.
+
+The concrete report/check models live in :mod:`devsandbox.validation.models`
+(plan 09); they are re-exported here so existing imports such as
+``from devsandbox.validation.interfaces import ValidationReport`` keep working.
+"""
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, runtime_checkable
-
-from pydantic import BaseModel
+from typing import Protocol, runtime_checkable
 
 from ..common.types import CheckSpec, RepoHandle, TaskSpec
 from ..gitmgr.interfaces import ChangeSet, Workspace
+from .models import (
+    BaselineComparison,
+    BaselineReport,
+    CheckResult,
+    Evidence,
+    FailureKind,
+    TamperingFinding,
+    TamperingSignal,
+    ValidationFailure,
+    ValidationReport,
+)
 
-
-class CheckResult(BaseModel):
-    """Outcome of a single validation check."""
-
-    check: str
-    passed: bool
-    output: str = ""
-
-
-class ValidationReport(BaseModel):
-    """Result of a validation pass."""
-
-    status: Literal["passed", "failed"]
-    checks: list[CheckResult] = []
-    summary: str = ""
+__all__ = [
+    "BaselineComparison",
+    "BaselineReport",
+    "CheckResult",
+    "Evidence",
+    "FailureKind",
+    "TamperingFinding",
+    "TamperingSignal",
+    "ValidationFailure",
+    "ValidationReport",
+    "Validator",
+]
 
 
 @runtime_checkable

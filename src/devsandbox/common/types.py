@@ -89,14 +89,44 @@ class NetworkPolicy(BaseModel):
 
 
 class CheckSpec(BaseModel):
-    """A validation check executed inside a sandbox."""
+    """A validation check executed inside a sandbox.
+
+    ``run`` is either a shell command string (executed with ``/bin/sh -lc``)
+    or an argv list.  The remaining fields are optional refinements used by the
+    validation runner (plan 09).  Checks are always executed in a *fresh*
+    validation container; nothing here can cause the agent's container or
+    environment to be reused.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     name: str
-    run: str
+    run: str | list[str]
     required: bool = True
     timeout_seconds: int = 300
+    working_dir: str = "."
+    env: dict[str, str] = Field(default_factory=dict)
+    expected_exit_codes: list[int] = Field(default_factory=lambda: [0])
+    success_regex: str | None = None
+    failure_regex: str | None = None
+    junit_xml_path: str | None = None
+    kind: Literal["test", "lint", "build", "setup", "other"] = "other"
+    network: Literal["none", "allowlist", "full"] = "none"
+    allowed_hosts: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_check(self) -> CheckSpec:
+        if not self.name.strip():
+            raise ValueError("check name must not be empty")
+        if self.timeout_seconds <= 0:
+            raise ValueError("check timeout_seconds must be > 0")
+        if not self.expected_exit_codes:
+            raise ValueError("expected_exit_codes must contain at least one code")
+        if isinstance(self.run, str) and not self.run.strip():
+            raise ValueError("check run command must not be empty")
+        if isinstance(self.run, list) and not self.run:
+            raise ValueError("check argv must not be empty")
+        return self
 
 
 class RepoSource(BaseModel):
@@ -257,7 +287,10 @@ class TaskSpec(BaseModel):
     instructions: str = ""
     success_criteria: list[str] = Field(default_factory=list)
     expected_files: list[str] = Field(default_factory=list)
+    expected_files_mode: Literal["ignore", "warn", "fail"] | None = None
     restricted_files: list[str] = Field(default_factory=list)
+    checks: list[CheckSpec] = Field(default_factory=list)
+    allow_no_changes: bool = False
     resources: ResourceProfile = Field(default_factory=ResourceProfile)
     timeout_seconds: int = 1800
     max_retries: int = 0

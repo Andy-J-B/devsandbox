@@ -324,7 +324,12 @@ def validate_graph(
                 issues.append(
                     _error("check.empty_name", "check name must not be empty", task_key=task.key)
                 )
-            if not check.run.strip():
+            empty_command = (
+                not check.run.strip()
+                if isinstance(check.run, str)
+                else not any(part.strip() for part in check.run)
+            )
+            if empty_command:
                 issues.append(
                     _error(
                         "check.empty_command",

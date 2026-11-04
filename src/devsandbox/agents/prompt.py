@@ -64,9 +64,10 @@ def build_prompt(req: AgentRunRequest, *, max_chars: int = DEFAULT_MAX_CHARS) ->
     if req.validation_checks:
         for check in req.validation_checks:
             required = "required" if check.required else "optional"
+            run_display = check.run if isinstance(check.run, str) else " ".join(check.run)
             lines.append(
                 f"- `{check.name}` ({required}, {check.timeout_seconds}s): "
-                f"`{_truncate(check.run, 400)}`"
+                f"`{_truncate(run_display, 400)}`"
             )
     else:
         lines.append("- Independent automated checks derived from the success criteria.")

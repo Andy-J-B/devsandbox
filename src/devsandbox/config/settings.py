@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -113,6 +115,70 @@ class SecretRef(BaseModel):
     path: str | None = None
 
 
+class ValidationSettings(BaseModel):
+    """Independent validation policy (plan 09).
+
+    These values are orchestrator configuration, never derived from a project
+    spec or agent output.  Per-project checks may *narrow* them (for example a
+    check may request no network) but cannot widen the security posture.
+    """
+
+    image: str = "devsandbox/validator:latest"
+    max_output_bytes: int = 16_384
+    max_changed_files: int = 200
+    max_diff_lines: int = 5_000
+    tamper_mode: Literal["fail", "warn", "ignore"] = "fail"
+    expected_files_mode: Literal["ignore", "warn", "fail"] = "warn"
+    short_circuit_on_required_failure: bool = False
+    fail_on_optional_failure: bool = False
+    require_required_check: bool = True
+    keep_scratch_on_failure: bool = False
+    assert_removal_threshold: int = 2
+    forbidden_extensions: list[str] = Field(
+        default_factory=lambda: [
+            ".exe",
+            ".dll",
+            ".so",
+            ".dylib",
+            ".bin",
+            ".o",
+            ".a",
+            ".class",
+            ".jar",
+            ".pyc",
+            ".wasm",
+        ]
+    )
+    test_config_patterns: list[str] = Field(
+        default_factory=lambda: [
+            "pytest.ini",
+            "tox.ini",
+            "setup.cfg",
+            "conftest.py",
+            "jest.config.*",
+            "vitest.config.*",
+            "karma.conf.*",
+            ".mocharc.*",
+            "phpunit.xml",
+            ".github/workflows/**",
+        ]
+    )
+
+    @field_validator("max_output_bytes", "max_changed_files", "max_diff_lines")
+    @classmethod
+    def _positive_limit(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("validation limits must be > 0")
+        return value
+
+    @field_validator("assert_removal_threshold")
+    @classmethod
+    def _threshold_non_negative(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("assert_removal_threshold must be >= 0")
+        return value
+
+
 class DevSandboxSettings(BaseSettings):
     """Top-level DevSandbox settings."""
 
@@ -130,6 +196,7 @@ class DevSandboxSettings(BaseSettings):
     security: SecurityConfig = SecurityConfig()
     agent: AgentConfig = AgentConfig()
     planner: PlannerConfig = PlannerConfig()
+    validation: ValidationSettings = ValidationSettings()
     secrets: dict[str, SecretRef] = Field(default_factory=dict)
 
 
