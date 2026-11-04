@@ -307,9 +307,16 @@ class ValidatorImpl:
 
     async def validate_task(self, task: TaskSpec, ws: Workspace, cs: ChangeSet) -> ValidationReport:
         """Validate one task change set without trusting the agent."""
-        pre = await run_prechecks(task, ws, cs, self._git, self._config, diff_provider=self._diff)
-        diff = pre.diff or DiffSummary(available=False, error="diff unavailable")
-        tampering = detect_tampering(cs, diff, self._config)
+        try:
+            pre = await run_prechecks(
+                task, ws, cs, self._git, self._config, diff_provider=self._diff
+            )
+            diff = pre.diff or DiffSummary(available=False, error="diff unavailable")
+            tampering = detect_tampering(cs, diff, self._config)
+        except Exception as exc:
+            return _error_report(
+                f"could not run validation pre-checks: {type(exc).__name__}: {exc}"
+            )
 
         if pre.infra_error:
             return _error_report(

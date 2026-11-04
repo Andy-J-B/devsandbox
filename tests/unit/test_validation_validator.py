@@ -119,6 +119,31 @@ def _validator(
 
 
 @pytest.mark.asyncio
+async def test_precheck_failure_is_an_infrastructure_error(tmp_path: Path) -> None:
+    class BrokenDiff:
+        async def diff(self, ws: Workspace, cs: ChangeSet) -> DiffSummary:
+            raise RuntimeError("git diff exploded")
+
+    sandbox = FakeSandboxManager()
+    validator = ValidatorImpl(
+        sandbox,
+        FakeGitManager(),
+        settings=_settings(tmp_path),
+        data_root=tmp_path / "data",
+        diff_provider=BrokenDiff(),
+    )
+    ws = _workspace(tmp_path)
+
+    report = await validator.validate_task(_task(), ws, _cs())
+
+    assert report.status == "error"
+    assert report.failure_kind is FailureKind.INFRA_ERROR
+    assert report.blame == "infrastructure"
+    assert "git diff exploded" in report.summary
+    assert sandbox.calls == []
+
+
+@pytest.mark.asyncio
 async def test_lying_agent_with_no_changes_fails(tmp_path: Path) -> None:
     sandbox = FakeSandboxManager()
     validator = _validator(tmp_path, sandbox, diff=DiffSummary())
