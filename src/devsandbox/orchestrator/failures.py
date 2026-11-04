@@ -209,8 +209,19 @@ class FailureClassifier:
         retryable = True
         counts = True
         attention = False
+        if report.status == "error":
+            return self.make_record(
+                FailureKind.INFRA_ERROR,
+                text,
+                retryable=True,
+                counts_against_budget=False,
+                validation_kind="infra_error",
+                detail={"checks": [check.model_dump(mode="json") for check in report.checks]},
+            )
         if validation_kind is not None:
             kind = self._kind_from_validation_label(validation_kind)
+        elif report.failure_kind is not None:
+            kind = self._kind_from_validation_label(report.failure_kind.value)
         elif "no changes" in lower or "empty change" in lower:
             kind = FailureKind.NO_CHANGES
         elif "restricted" in lower or "forbidden" in lower:
@@ -220,6 +231,8 @@ class FailureClassifier:
         if kind in {FailureKind.RESTRICTED_PATH, FailureKind.POLICY_VIOLATION}:
             retryable = False
             attention = True
+        if kind is FailureKind.INFRA_ERROR:
+            counts = False
         report_text = report.summary or (
             "; ".join(
                 f"{check.check}: {'pass' if check.passed else 'fail'}" for check in report.checks

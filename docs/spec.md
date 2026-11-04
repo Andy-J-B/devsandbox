@@ -29,9 +29,14 @@ validation:
       run: "pytest -q"
       required: true
       timeout_seconds: 300
+      kind: test
+      expected_exit_codes: [0]
+      junit_xml_path: reports/junit.xml
     - name: lint
-      run: "ruff check ."
+      run: ["ruff", "check", "."]
       required: false
+      kind: lint
+      network: none
 limits:                     # may only NARROW global policy
   max_retries: 2
   task_timeout_seconds: 1800

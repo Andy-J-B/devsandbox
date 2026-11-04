@@ -54,8 +54,10 @@ not active or that exceed `max_age_seconds` (janitor, plan 08).
 ## Images
 
 - `docker/agent-base/Dockerfile`: owned by plan 04 (the agent runtime).
-- `docker/validator-base/Dockerfile`: provided here (python, node, git,
-  build-essential) for running validation commands; plan 09 may extend it.
+- `docker/validator-base/Dockerfile`: validation image (python, node, git,
+  build-essential, pre-installed pytest/pytest-asyncio/ruff) so common Python
+  checks run without network access. Build it with
+  `docker build -f docker/validator-base/Dockerfile -t devsandbox/validator:latest .`
 - `ensure_image(image)` pulls the image when it is not present locally.
 
 ## Testing
