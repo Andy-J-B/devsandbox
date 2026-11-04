@@ -8,6 +8,8 @@ container's environment/argv limits.
 
 from __future__ import annotations
 
+import shlex
+
 from ..common.redaction import redact
 from .interfaces import AgentRunRequest
 
@@ -64,7 +66,7 @@ def build_prompt(req: AgentRunRequest, *, max_chars: int = DEFAULT_MAX_CHARS) ->
     if req.validation_checks:
         for check in req.validation_checks:
             required = "required" if check.required else "optional"
-            run_display = check.run if isinstance(check.run, str) else " ".join(check.run)
+            run_display = check.run if isinstance(check.run, str) else shlex.join(check.run)
             lines.append(
                 f"- `{check.name}` ({required}, {check.timeout_seconds}s): "
                 f"`{_truncate(run_display, 400)}`"
