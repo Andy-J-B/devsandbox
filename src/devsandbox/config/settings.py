@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -115,6 +115,45 @@ class SecretRef(BaseModel):
     path: str | None = None
 
 
+class ApiSettings(BaseModel):
+    """HTTP API configuration (plan 10).
+
+    ``token`` is required before the API serves requests.  It is intentionally
+    a ``SecretStr`` so it can never be logged accidentally.  The CLI can also
+    read the top-level ``DEVSANDBOX_API_TOKEN`` alias.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = 8000
+    token: SecretStr | None = None
+    max_spec_bytes: int = 1_000_000
+    max_log_bytes: int = 1_000_000
+    max_log_lines: int = 5_000
+    expensive_rate_limit_per_minute: int = 60
+    request_id_header: str = "X-Request-ID"
+
+    @field_validator("port")
+    @classmethod
+    def _port_in_range(cls, value: int) -> int:
+        if not 1 <= value <= 65535:
+            raise ValueError("api port must be between 1 and 65535")
+        return value
+
+    @field_validator("max_spec_bytes", "max_log_bytes", "max_log_lines")
+    @classmethod
+    def _positive_limit(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("api limits must be > 0")
+        return value
+
+    @field_validator("expensive_rate_limit_per_minute")
+    @classmethod
+    def _non_negative_limit(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("expensive_rate_limit_per_minute must be >= 0")
+        return value
+
+
 class ValidationSettings(BaseModel):
     """Independent validation policy (plan 09).
 
@@ -197,7 +236,16 @@ class DevSandboxSettings(BaseSettings):
     agent: AgentConfig = AgentConfig()
     planner: PlannerConfig = PlannerConfig()
     validation: ValidationSettings = ValidationSettings()
+    api: ApiSettings = ApiSettings()
+    # Top-level alias so ``DEVSANDBOX_API_TOKEN`` works as documented.  The
+    # nested ``DEVSANDBOX_API__TOKEN`` form is also supported.
+    api_token: SecretStr | None = None
     secrets: dict[str, SecretRef] = Field(default_factory=dict)
+
+    @property
+    def effective_api_token(self) -> SecretStr | None:
+        """Return the configured API token (top-level alias wins)."""
+        return self.api_token or self.api.token
 
 
 _cached_settings: DevSandboxSettings | None = None

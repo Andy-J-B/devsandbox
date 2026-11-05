@@ -148,6 +148,17 @@ class PlanService:
             return await self.approve_plan(plan_id, approver="autonomous")
         return plan
 
+    # -------------------------------------------------------------- retrieval
+    async def get_plan(self, plan_id: str) -> Plan:
+        """Return a persisted plan with its tasks and graph issues."""
+        plan_model = await self._get_plan(plan_id)
+        return self._to_plan(plan_model, await self._load_plan_drafts(plan_id))
+
+    async def list_plans(self, project_id: str) -> list[Plan]:
+        """Return every plan version for a project (newest first)."""
+        models = await self.plans.list_for_project(project_id)
+        return [self._to_plan(model, await self._load_plan_drafts(model.id)) for model in models]
+
     # ----------------------------------------------------------------- approve
     async def approve_plan(self, plan_id: str, approver: str) -> Plan:
         """Activate a proposed plan after a final validation and policy check."""
