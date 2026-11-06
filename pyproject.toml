@@ -21,6 +21,7 @@ dependencies = [
     "pathspec>=0.12.0,<0.13.0",
     "structlog>=0.39.0,<1.0.0",
     "typer>=0.12.0,<1.0.0",
+    "rich>=13.0.0,<15.0.0",
     "httpx>=0.27.0,<1.0.0",
 ]
 
@@ -37,6 +38,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"devsandbox.db.migrations" = ["env.py", "versions/*.py"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -59,6 +63,9 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/devsandbox/common/errors.py" = ["N818"]
+# Typer options are declarative: calling typer.Option/Argument in defaults is
+# the documented usage and is evaluated by Typer, not at import time.
+"src/devsandbox/cli/app.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -67,5 +74,5 @@ mypy_path = "src"
 packages = ["devsandbox"]
 
 [project.scripts]
-devsandbox-api = "devsandbox.api:app"
-devsandbox-cli = "devsandbox.cli:app"
+devsandbox = "devsandbox.cli:main"
+devsandbox-api = "devsandbox.api.server:main"
