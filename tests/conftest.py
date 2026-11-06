@@ -3,8 +3,34 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Apply the suite's directory-based markers.
+
+    Keeping the marker mapping here (instead of repeating it on every test
+    module) makes ``-m unit``, ``-m e2e`` and friends reliable even for older
+    tests that predate the marker taxonomy.
+    """
+    root = Path(__file__).resolve().parent
+    directories = {
+        root / "unit": "unit",
+        root / "integration": "integration",
+        root / "e2e": "e2e",
+        root / "security": "security",
+        root / "contract": "contract",
+    }
+    for item in items:
+        path = Path(str(item.path)).resolve()
+        for directory, marker in directories.items():
+            if path.is_relative_to(directory):
+                item.add_marker(getattr(pytest.mark, marker))
+                break
+        else:
+            item.add_marker(pytest.mark.unit)
 
 
 @pytest.fixture

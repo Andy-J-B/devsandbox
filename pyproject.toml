@@ -49,8 +49,14 @@ testpaths = ["tests"]
 norecursedirs = ["tests/fixtures"]
 pythonpath = ["src"]
 markers = [
-    "docker: integration tests requiring a real Docker daemon (skipped without one)",
-    "opencode: integration tests building/running the OpenCode agent image (opt-in)",
+    "unit: fast tests with fakes and no external services",
+    "integration: tests that use PostgreSQL and/or the real local modules",
+    "docker: tests requiring a real Docker daemon (skipped without one)",
+    "e2e: full end-to-end acceptance scenarios (real Docker, Git, PostgreSQL)",
+    "opencode: real OpenCode smoke tests (manual/opt-in, non-deterministic)",
+    "slow: tests that take noticeably longer than the unit suite",
+    "security: security hardening and isolation tests",
+    "contract: cross-implementation Protocol contract tests",
 ]
 
 [tool.ruff]
