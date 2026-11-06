@@ -1,0 +1,180 @@
+{
+  "costs": {
+    "budget_requests_remaining": 98,
+    "budget_tokens_remaining": 4880,
+    "inference_usd": 0.01,
+    "infra_usd": 0.02,
+    "requests": 2,
+    "tokens": 120,
+    "total_usd": 0.03
+  },
+  "counts": {
+    "blocked": 0,
+    "cancelled": 0,
+    "completed": 0,
+    "failed": 1,
+    "other": 0,
+    "pending": 0,
+    "ready": 0,
+    "retry_wait": 0,
+    "running": 0,
+    "total": 1
+  },
+  "header": {
+    "base_commit": "base-policy_denial",
+    "finished_at": "2026-01-01T11:30:00Z",
+    "generated_at": "2026-01-01T12:00:00Z",
+    "main_branch": "main",
+    "mode": "supervised",
+    "name": "Report policy_denial",
+    "plan_id": "plan-policy_denial",
+    "plan_version": 1,
+    "project_id": "proj-policy_denial",
+    "repo_source": "/tmp/demo-repo",
+    "spec_hash": "spec-hash-policy_denial",
+    "staging_branch": "devsandbox/proj-policy_denial/staging",
+    "staging_head": null,
+    "started_at": "2026-01-01T10:00:00Z",
+    "status": "failed"
+  },
+  "integrations": [],
+  "outstanding": {
+    "blocked_tasks": [],
+    "suggested_actions": [
+      "inspect task guarded logs and retry or replan"
+    ],
+    "unresolved_failures": [
+      "guarded: agent modified a restricted test file"
+    ],
+    "warnings": [
+      "baseline validation: baseline pytest failed",
+      "policy denial: main-branch merge is disabled by policy",
+      "test tampering signal in task guarded: agent modified tests/test_app.py"
+    ]
+  },
+  "resource_events": [
+    {
+      "at": "2026-01-01T10:20:00Z",
+      "attempt_id": null,
+      "detail": "main-branch merge is disabled by policy",
+      "task_id": null,
+      "type": "POLICY_DENIED"
+    }
+  ],
+  "staging_instructions": [
+    "Review integrated work: git log main..devsandbox/proj-policy_denial/staging",
+    "Review the diff: git diff main..devsandbox/proj-policy_denial/staging",
+    "DevSandbox never merges into the main branch automatically.",
+    "Merge manually when satisfied: git checkout main && git merge --no-ff devsandbox/proj-policy_denial/staging"
+  ],
+  "tasks": [
+    {
+      "attempt_count": 1,
+      "attempts": [
+        {
+          "base_commit": "base-policy_denial",
+          "checks": [
+            {
+              "duration_seconds": 1.5,
+              "exit_code": 1,
+              "failure_kind": null,
+              "name": "pytest",
+              "passed": false,
+              "required": true,
+              "status": "failed",
+              "summary": "",
+              "tests_errors": null,
+              "tests_failed": 1,
+              "tests_skipped": 0,
+              "tests_total": 4
+            }
+          ],
+          "commits": [
+            {
+              "sha": "c1",
+              "subject": ""
+            }
+          ],
+          "duration_seconds": 2160.0,
+          "exit_status": "exited_ok",
+          "failure": {
+            "detail": {},
+            "kind": "tampering",
+            "log_tail_pointer": null,
+            "summary": "agent modified tests/test_app.py"
+          },
+          "files_changed": [],
+          "finished_at": "2026-01-01T10:38:00Z",
+          "head_commit": "c1",
+          "log_pointer": "logs/att-policy_denial-guarded-1/stdout.log",
+          "number": 1,
+          "outcome": "exited_ok",
+          "peak_memory_mb": 512,
+          "started_at": "2026-01-01T10:02:00Z",
+          "status": "completed",
+          "token_usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          },
+          "validation_status": "failed",
+          "validation_summary": "tampering detected"
+        }
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "checks": [
+        {
+          "duration_seconds": 1.5,
+          "exit_code": 1,
+          "failure_kind": null,
+          "name": "pytest",
+          "passed": false,
+          "required": true,
+          "status": "failed",
+          "summary": "",
+          "tests_errors": null,
+          "tests_failed": 1,
+          "tests_skipped": 0,
+          "tests_total": 4
+        }
+      ],
+      "commits": [
+        {
+          "sha": "c1",
+          "subject": ""
+        }
+      ],
+      "duration_seconds": 2160.0,
+      "failure": {
+        "detail": {},
+        "kind": "tampering",
+        "log_tail_pointer": null,
+        "summary": "agent modified a restricted test file"
+      },
+      "files_changed": [],
+      "id": "task-policy_denial-guarded",
+      "key": "guarded",
+      "max_retries": 1,
+      "priority": 50,
+      "result": {},
+      "status": "failed",
+      "title": "Task guarded"
+    }
+  ],
+  "test_results": [
+    {
+      "check": "pytest",
+      "error": 0,
+      "failed": 1,
+      "passed": 0,
+      "skipped": 0,
+      "timeout": 0,
+      "total": 1
+    }
+  ],
+  "warnings": [
+    "baseline validation: baseline pytest failed",
+    "policy denial: main-branch merge is disabled by policy",
+    "test tampering signal in task guarded: agent modified tests/test_app.py"
+  ]
+}

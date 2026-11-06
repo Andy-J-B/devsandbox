@@ -1,0 +1,3983 @@
+{
+  "components": {
+    "schemas": {
+      "ApproveRequest": {
+        "description": "Plan approval metadata.",
+        "properties": {
+          "approver": {
+            "default": "user",
+            "title": "Approver",
+            "type": "string"
+          }
+        },
+        "title": "ApproveRequest",
+        "type": "object"
+      },
+      "AttemptDetail": {
+        "description": "Attempt details plus the full independent validation report.",
+        "properties": {
+          "agent_log_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Log Path"
+          },
+          "agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
+          },
+          "base_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Commit"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "checks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "container_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container Id"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "duration_seconds": {
+            "default": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "exit_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Status"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "head_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "peak_memory_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Memory Mb"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "token_usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Usage"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "validation_report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Report"
+          },
+          "validation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Status"
+          },
+          "validation_summary": {
+            "default": "",
+            "title": "Validation Summary",
+            "type": "string"
+          },
+          "workspace_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Path"
+          }
+        },
+        "required": [
+          "id",
+          "task_id",
+          "number",
+          "status"
+        ],
+        "title": "AttemptDetail",
+        "type": "object"
+      },
+      "AttemptSummary": {
+        "description": "One attempt of a task.",
+        "properties": {
+          "agent_log_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Log Path"
+          },
+          "agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
+          },
+          "base_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Commit"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "container_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container Id"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "duration_seconds": {
+            "default": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "exit_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Status"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "head_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "peak_memory_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Memory Mb"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "token_usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Usage"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "validation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Status"
+          },
+          "validation_summary": {
+            "default": "",
+            "title": "Validation Summary",
+            "type": "string"
+          },
+          "workspace_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Path"
+          }
+        },
+        "required": [
+          "id",
+          "task_id",
+          "number",
+          "status"
+        ],
+        "title": "AttemptSummary",
+        "type": "object"
+      },
+      "CheckSpec": {
+        "description": "A validation check executed inside a sandbox.\n\n``run`` is either a shell command string (executed with ``/bin/sh -lc``)\nor an argv list.  The remaining fields are optional refinements used by the\nvalidation runner (plan 09).  Checks are always executed in a *fresh*\nvalidation container; nothing here can cause the agent's container or\nenvironment to be reused.",
+        "properties": {
+          "allowed_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Hosts",
+            "type": "array"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Env",
+            "type": "object"
+          },
+          "expected_exit_codes": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Expected Exit Codes",
+            "type": "array"
+          },
+          "failure_regex": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Regex"
+          },
+          "junit_xml_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Junit Xml Path"
+          },
+          "kind": {
+            "default": "other",
+            "enum": [
+              "test",
+              "lint",
+              "build",
+              "setup",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "network": {
+            "default": "none",
+            "enum": [
+              "none",
+              "allowlist",
+              "full"
+            ],
+            "title": "Network",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Run"
+          },
+          "success_regex": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Regex"
+          },
+          "timeout_seconds": {
+            "default": 300,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          },
+          "working_dir": {
+            "default": ".",
+            "title": "Working Dir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "run"
+        ],
+        "title": "CheckSpec",
+        "type": "object"
+      },
+      "EngineStatusView": {
+        "description": "Observable engine state.",
+        "properties": {
+          "attempts_total": {
+            "default": 0,
+            "title": "Attempts Total",
+            "type": "integer"
+          },
+          "budget_usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Budget Usage",
+            "type": "object"
+          },
+          "deferred": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Deferred",
+            "type": "object"
+          },
+          "last_round_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Round At"
+          },
+          "lease_holder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Holder"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "pressure": {
+            "default": "ok",
+            "title": "Pressure",
+            "type": "string"
+          },
+          "ready_queue": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ready Queue",
+            "type": "array"
+          },
+          "running": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Running",
+            "type": "array"
+          }
+        },
+        "title": "EngineStatusView",
+        "type": "object"
+      },
+      "EventRecord": {
+        "description": "One audit event.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Id"
+          },
+          "from_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From State"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "to_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To State"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "type",
+          "at"
+        ],
+        "title": "EventRecord",
+        "type": "object"
+      },
+      "GraphIssue": {
+        "description": "A structural issue detected in a task graph.",
+        "properties": {
+          "code": {
+            "default": "graph",
+            "title": "Code",
+            "type": "string"
+          },
+          "issue": {
+            "title": "Issue",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/GraphSeverity",
+            "default": "error"
+          },
+          "task_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Key"
+          }
+        },
+        "required": [
+          "issue"
+        ],
+        "title": "GraphIssue",
+        "type": "object"
+      },
+      "GraphSeverity": {
+        "description": "Severity of a graph validation issue.",
+        "enum": [
+          "error",
+          "warning"
+        ],
+        "title": "GraphSeverity",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HostResourcesView": {
+        "description": "Host metric sample used by ``/system/status``.",
+        "properties": {
+          "cpu_count": {
+            "default": 1,
+            "title": "Cpu Count",
+            "type": "integer"
+          },
+          "cpu_percent": {
+            "default": 0.0,
+            "title": "Cpu Percent",
+            "type": "number"
+          },
+          "disk_free_mb": {
+            "default": 0,
+            "title": "Disk Free Mb",
+            "type": "integer"
+          },
+          "docker_disk_free_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docker Disk Free Mb"
+          },
+          "load_avg": {
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Load Avg",
+            "type": "array"
+          },
+          "memory_available_mb": {
+            "default": 0.0,
+            "title": "Memory Available Mb",
+            "type": "number"
+          },
+          "memory_total_mb": {
+            "default": 0.0,
+            "title": "Memory Total Mb",
+            "type": "number"
+          },
+          "memory_used_percent": {
+            "default": 0.0,
+            "title": "Memory Used Percent",
+            "type": "number"
+          },
+          "process_count": {
+            "default": 0,
+            "title": "Process Count",
+            "type": "integer"
+          },
+          "sampled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampled At"
+          }
+        },
+        "title": "HostResourcesView",
+        "type": "object"
+      },
+      "LogChunk": {
+        "description": "Redacted, size-capped log content.",
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "lines": {
+            "title": "Lines",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "stream": {
+            "enum": [
+              "agent",
+              "stdout",
+              "stderr"
+            ],
+            "title": "Stream",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "stream",
+          "content",
+          "lines",
+          "truncated",
+          "path"
+        ],
+        "title": "LogChunk",
+        "type": "object"
+      },
+      "ModeChangeRequest": {
+        "description": "Explicit autonomous/supervised mode change.",
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ProjectMode"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "ModeChangeRequest",
+        "type": "object"
+      },
+      "Plan": {
+        "description": "A persisted, versioned task graph.",
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "generated_by": {
+            "default": "",
+            "title": "Generated By",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/GraphIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "planner_version": {
+            "default": "1.0",
+            "title": "Planner Version",
+            "type": "string"
+          },
+          "project_id": {
+            "default": "",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "risks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "source_revision": {
+            "default": "",
+            "title": "Source Revision",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlanStatus",
+            "default": "proposed"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskDraft"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "title": "Plan",
+        "type": "object"
+      },
+      "PlanPatch": {
+        "additionalProperties": false,
+        "description": "User edit applied to a plan before approval.\n\nSupplying ``tasks`` replaces the whole graph.  Otherwise ``upsert_tasks``\nare inserted/updated by key and ``remove_keys`` are deleted.",
+        "properties": {
+          "assumptions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptions"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "remove_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Remove Keys",
+            "type": "array"
+          },
+          "risks": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risks"
+          },
+          "tasks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TaskDraft"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tasks"
+          },
+          "upsert_tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskDraft"
+            },
+            "title": "Upsert Tasks",
+            "type": "array"
+          }
+        },
+        "title": "PlanPatch",
+        "type": "object"
+      },
+      "PlanStatus": {
+        "description": "Lifecycle states of a persisted plan.",
+        "enum": [
+          "proposed",
+          "approved",
+          "active",
+          "superseded",
+          "rejected"
+        ],
+        "title": "PlanStatus",
+        "type": "string"
+      },
+      "ProjectMode": {
+        "description": "Operating mode of a project.",
+        "enum": [
+          "supervised",
+          "autonomous"
+        ],
+        "title": "ProjectMode",
+        "type": "string"
+      },
+      "ProjectReport": {
+        "description": "Deterministic report for one project at a point in time.",
+        "properties": {
+          "costs": {
+            "$ref": "#/components/schemas/ReportCosts"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ReportCounts"
+          },
+          "header": {
+            "$ref": "#/components/schemas/ReportHeader"
+          },
+          "integrations": {
+            "items": {
+              "$ref": "#/components/schemas/ReportIntegration"
+            },
+            "title": "Integrations",
+            "type": "array"
+          },
+          "outstanding": {
+            "$ref": "#/components/schemas/ReportOutstanding"
+          },
+          "resource_events": {
+            "items": {
+              "$ref": "#/components/schemas/ReportResourceEvent"
+            },
+            "title": "Resource Events",
+            "type": "array"
+          },
+          "staging_instructions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Staging Instructions",
+            "type": "array"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportTask"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "test_results": {
+            "items": {
+              "$ref": "#/components/schemas/ReportTestAggregate"
+            },
+            "title": "Test Results",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "header",
+          "counts"
+        ],
+        "title": "ProjectReport",
+        "type": "object"
+      },
+      "ProjectSummary": {
+        "description": "Project list/detail row.",
+        "properties": {
+          "active_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Plan Id"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ReportCounts"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "main_branch": {
+            "title": "Main Branch",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ProjectMode"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "repo_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Path"
+          },
+          "repo_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Source"
+          },
+          "spec_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec Hash"
+          },
+          "staging_branch": {
+            "title": "Staging Branch",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mode",
+          "status",
+          "main_branch",
+          "staging_branch"
+        ],
+        "title": "ProjectSummary",
+        "type": "object"
+      },
+      "RejectRequest": {
+        "description": "Plan rejection metadata.",
+        "properties": {
+          "reason": {
+            "default": "rejected by user",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RejectRequest",
+        "type": "object"
+      },
+      "ReportAttempt": {
+        "description": "One execution attempt of a task.",
+        "properties": {
+          "base_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Commit"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportCheckResult"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "commits": {
+            "items": {
+              "$ref": "#/components/schemas/ReportCommit"
+            },
+            "title": "Commits",
+            "type": "array"
+          },
+          "duration_seconds": {
+            "default": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "exit_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Status"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "files_changed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files Changed",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "head_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit"
+          },
+          "log_pointer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Pointer"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "outcome": {
+            "default": "",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "peak_memory_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Memory Mb"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "token_usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Usage"
+          },
+          "validation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Status"
+          },
+          "validation_summary": {
+            "default": "",
+            "title": "Validation Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "status"
+        ],
+        "title": "ReportAttempt",
+        "type": "object"
+      },
+      "ReportCheckResult": {
+        "description": "One validation check result inside an attempt.",
+        "properties": {
+          "duration_seconds": {
+            "default": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "failure_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Kind"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "passed": {
+            "default": false,
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "tests_errors": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tests Errors"
+          },
+          "tests_failed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tests Failed"
+          },
+          "tests_skipped": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tests Skipped"
+          },
+          "tests_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tests Total"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "ReportCheckResult",
+        "type": "object"
+      },
+      "ReportCommit": {
+        "description": "A commit associated with a task or attempt.",
+        "properties": {
+          "sha": {
+            "title": "Sha",
+            "type": "string"
+          },
+          "subject": {
+            "default": "",
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha"
+        ],
+        "title": "ReportCommit",
+        "type": "object"
+      },
+      "ReportCosts": {
+        "description": "Infra and inference cost ledgers, kept separate as required by 00 \u00a78.10.",
+        "properties": {
+          "budget_requests_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Requests Remaining"
+          },
+          "budget_tokens_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Tokens Remaining"
+          },
+          "inference_usd": {
+            "default": 0.0,
+            "title": "Inference Usd",
+            "type": "number"
+          },
+          "infra_usd": {
+            "default": 0.0,
+            "title": "Infra Usd",
+            "type": "number"
+          },
+          "requests": {
+            "default": 0,
+            "title": "Requests",
+            "type": "integer"
+          },
+          "tokens": {
+            "default": 0,
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "total_usd": {
+            "default": 0.0,
+            "title": "Total Usd",
+            "type": "number"
+          }
+        },
+        "title": "ReportCosts",
+        "type": "object"
+      },
+      "ReportCounts": {
+        "description": "Task counts by lifecycle state.",
+        "properties": {
+          "blocked": {
+            "default": 0,
+            "title": "Blocked",
+            "type": "integer"
+          },
+          "cancelled": {
+            "default": 0,
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "other": {
+            "default": 0,
+            "title": "Other",
+            "type": "integer"
+          },
+          "pending": {
+            "default": 0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "ready": {
+            "default": 0,
+            "title": "Ready",
+            "type": "integer"
+          },
+          "retry_wait": {
+            "default": 0,
+            "title": "Retry Wait",
+            "type": "integer"
+          },
+          "running": {
+            "default": 0,
+            "title": "Running",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "ReportCounts",
+        "type": "object"
+      },
+      "ReportFailure": {
+        "description": "Failure diagnostics attached to a task or attempt.",
+        "properties": {
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "kind": {
+            "default": "unknown",
+            "title": "Kind",
+            "type": "string"
+          },
+          "log_tail_pointer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Tail Pointer"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "title": "ReportFailure",
+        "type": "object"
+      },
+      "ReportHeader": {
+        "description": "Project / revision header for a report.",
+        "properties": {
+          "base_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Commit"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "main_branch": {
+            "default": "main",
+            "title": "Main Branch",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "plan_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Version"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "repo_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Source"
+          },
+          "spec_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec Hash"
+          },
+          "staging_branch": {
+            "default": "",
+            "title": "Staging Branch",
+            "type": "string"
+          },
+          "staging_head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staging Head"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "name",
+          "mode",
+          "status",
+          "generated_at"
+        ],
+        "title": "ReportHeader",
+        "type": "object"
+      },
+      "ReportIntegration": {
+        "description": "One staging integration record.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "conflicting_files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflicting Files",
+            "type": "array"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "staging_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staging After"
+          },
+          "staging_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staging Before"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_id",
+          "attempt_id",
+          "status"
+        ],
+        "title": "ReportIntegration",
+        "type": "object"
+      },
+      "ReportOutstanding": {
+        "description": "Unresolved work and warnings for the human reviewer.",
+        "properties": {
+          "blocked_tasks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked Tasks",
+            "type": "array"
+          },
+          "suggested_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Actions",
+            "type": "array"
+          },
+          "unresolved_failures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved Failures",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "title": "ReportOutstanding",
+        "type": "object"
+      },
+      "ReportResourceEvent": {
+        "description": "Pressure, circuit-breaker, policy, timeout, or OOM event.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Id"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "ReportResourceEvent",
+        "type": "object"
+      },
+      "ReportTask": {
+        "description": "Per-task report section.",
+        "properties": {
+          "attempt_count": {
+            "default": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAttempt"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "blocked_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked By",
+            "type": "array"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportCheckResult"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "commits": {
+            "items": {
+              "$ref": "#/components/schemas/ReportCommit"
+            },
+            "title": "Commits",
+            "type": "array"
+          },
+          "duration_seconds": {
+            "default": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "files_changed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files Changed",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "max_retries": {
+            "default": 0,
+            "title": "Max Retries",
+            "type": "integer"
+          },
+          "priority": {
+            "default": 0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "title",
+          "status"
+        ],
+        "title": "ReportTask",
+        "type": "object"
+      },
+      "ReportTestAggregate": {
+        "description": "Aggregated validation-check outcome across attempts.",
+        "properties": {
+          "check": {
+            "title": "Check",
+            "type": "string"
+          },
+          "error": {
+            "default": 0,
+            "title": "Error",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "passed": {
+            "default": 0,
+            "title": "Passed",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "timeout": {
+            "default": 0,
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "check"
+        ],
+        "title": "ReportTestAggregate",
+        "type": "object"
+      },
+      "ResourceProfile": {
+        "description": "Compute / memory / disk / pid resource limits for a sandbox.",
+        "properties": {
+          "cpu_cores": {
+            "default": 1.0,
+            "title": "Cpu Cores",
+            "type": "number"
+          },
+          "disk_mb": {
+            "default": 4096,
+            "title": "Disk Mb",
+            "type": "integer"
+          },
+          "memory_mb": {
+            "default": 2048,
+            "title": "Memory Mb",
+            "type": "integer"
+          },
+          "pids_limit": {
+            "default": 512,
+            "title": "Pids Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ResourceProfile",
+        "type": "object"
+      },
+      "RetryRequest": {
+        "description": "Manual retry request; budget changes require an explicit flag.",
+        "properties": {
+          "reset_budget": {
+            "default": false,
+            "title": "Reset Budget",
+            "type": "boolean"
+          }
+        },
+        "title": "RetryRequest",
+        "type": "object"
+      },
+      "RetryResponse": {
+        "description": "Result of a manual retry.",
+        "properties": {
+          "reset_budget": {
+            "default": false,
+            "title": "Reset Budget",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "RetryResponse",
+        "type": "object"
+      },
+      "SystemStatus": {
+        "description": "Engine, host, budget, and API status.",
+        "properties": {
+          "api": {
+            "additionalProperties": true,
+            "title": "Api",
+            "type": "object"
+          },
+          "budget_usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Budget Usage",
+            "type": "object"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/EngineStatusView"
+          },
+          "pressure": {
+            "default": "unknown",
+            "title": "Pressure",
+            "type": "string"
+          },
+          "projects": {
+            "default": 0,
+            "title": "Projects",
+            "type": "integer"
+          },
+          "resources": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HostResourcesView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "engine"
+        ],
+        "title": "SystemStatus",
+        "type": "object"
+      },
+      "TaskDetail": {
+        "description": "Full task detail used by the task page / CLI.",
+        "properties": {
+          "attempt_count": {
+            "default": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptSummary"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckSpec"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Attempt Id"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Files",
+            "type": "array"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "max_retries": {
+            "default": 0,
+            "title": "Max Retries",
+            "type": "integer"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "priority": {
+            "default": 0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceProfile"
+          },
+          "restricted_files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Restricted Files",
+            "type": "array"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "retry_not_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Not Before"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Success Criteria",
+            "type": "array"
+          },
+          "timeout_seconds": {
+            "default": 1800,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "plan_id",
+          "key",
+          "title",
+          "status"
+        ],
+        "title": "TaskDetail",
+        "type": "object"
+      },
+      "TaskDraft": {
+        "additionalProperties": false,
+        "description": "A task draft produced by a planner before it is persisted.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckSpec"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "depends_on": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Depends On",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Files",
+            "type": "array"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "max_retries": {
+            "default": 0,
+            "title": "Max Retries",
+            "type": "integer"
+          },
+          "priority": {
+            "default": 50,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceProfile"
+          },
+          "restricted_files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Restricted Files",
+            "type": "array"
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Success Criteria",
+            "type": "array"
+          },
+          "timeout_seconds": {
+            "default": 1800,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title"
+        ],
+        "title": "TaskDraft",
+        "type": "object"
+      },
+      "TaskSummary": {
+        "description": "Task list row including attempt/failure information.",
+        "properties": {
+          "attempt_count": {
+            "default": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptSummary"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Attempt Id"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "max_retries": {
+            "default": 0,
+            "title": "Max Retries",
+            "type": "integer"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "priority": {
+            "default": 0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "plan_id",
+          "key",
+          "title",
+          "status"
+        ],
+        "title": "TaskSummary",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Supervised and autonomous coding-agent orchestration.",
+    "title": "DevSandbox API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/plans/{plan_id}": {
+      "get": {
+        "operationId": "get_plan_v1_plans__plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Plan V1 Plans  Plan Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Plan",
+        "tags": [
+          "plans"
+        ]
+      },
+      "patch": {
+        "operationId": "edit_plan_v1_plans__plan_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Plan",
+        "tags": [
+          "plans"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/approve": {
+      "post": {
+        "operationId": "approve_plan_v1_plans__plan_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApproveRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Plan",
+        "tags": [
+          "plans"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/reject": {
+      "post": {
+        "operationId": "reject_plan_v1_plans__plan_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RejectRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Plan",
+        "tags": [
+          "plans"
+        ]
+      }
+    },
+    "/v1/projects": {
+      "get": {
+        "operationId": "list_projects_v1_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectSummary"
+                  },
+                  "title": "Response List Projects V1 Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Projects",
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "operationId": "submit_project_v1_projects_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Submit Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}": {
+      "get": {
+        "operationId": "get_project_v1_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/analyze": {
+      "post": {
+        "description": "Run analysis once; repeated calls on an analyzed project are no-ops.",
+        "operationId": "analyze_project_v1_projects__project_id__analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/cancel": {
+      "post": {
+        "operationId": "cancel_project_v1_projects__project_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/events": {
+      "get": {
+        "operationId": "list_events_v1_projects__project_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventRecord"
+                  },
+                  "title": "Response List Events V1 Projects  Project Id  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/events/stream": {
+      "get": {
+        "description": "Poll the append-only event log and stream new rows as SSE.\n\n``once=true`` is a test/tooling convenience: existing events are emitted and\nthe stream closes.  The default keeps the connection open until the client\ndisconnects.",
+        "operationId": "stream_events_v1_projects__project_id__events_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "poll_seconds",
+            "required": false,
+            "schema": {
+              "default": 1.0,
+              "title": "Poll Seconds",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "once",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Once",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/mode": {
+      "post": {
+        "operationId": "set_mode_v1_projects__project_id__mode_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Mode",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/pause": {
+      "post": {
+        "operationId": "pause_project_v1_projects__project_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/plans": {
+      "get": {
+        "operationId": "list_plans_v1_projects__project_id__plans_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Plans V1 Projects  Project Id  Plans Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Plans",
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "description": "Generate the next plan version.\n\nAnalysis is idempotent and is run automatically for a freshly submitted\nproject so that the documented ``submit -> plan`` flow works without a\nseparate call.",
+        "operationId": "create_plan_v1_projects__project_id__plans_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Plan",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/report": {
+      "get": {
+        "description": "Return a read-only, deterministic report of the current DB state.",
+        "operationId": "get_report_v1_projects__project_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "markdown",
+                "html"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Report",
+        "tags": [
+          "report"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/resume": {
+      "post": {
+        "operationId": "resume_project_v1_projects__project_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/start": {
+      "post": {
+        "operationId": "start_project_v1_projects__project_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/tasks": {
+      "get": {
+        "operationId": "list_project_tasks_v1_projects__project_id__tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskSummary"
+                  },
+                  "title": "Response List Project Tasks V1 Projects  Project Id  Tasks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Tasks",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/system/status": {
+      "get": {
+        "operationId": "system_status_v1_system_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "System Status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}": {
+      "get": {
+        "operationId": "get_task_v1_tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/attempts/{attempt_number}": {
+      "get": {
+        "operationId": "get_attempt_v1_tasks__task_id__attempts__attempt_number__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attempt_number",
+            "required": true,
+            "schema": {
+              "title": "Attempt Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Attempt",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/attempts/{attempt_number}/logs": {
+      "get": {
+        "operationId": "get_attempt_logs_v1_tasks__task_id__attempts__attempt_number__logs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attempt_number",
+            "required": true,
+            "schema": {
+              "title": "Attempt Number",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stream",
+            "required": false,
+            "schema": {
+              "default": "agent",
+              "enum": [
+                "agent",
+                "stdout",
+                "stderr"
+              ],
+              "title": "Stream",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tail",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tail"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogChunk"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Attempt Logs",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/retry": {
+      "post": {
+        "description": "Re-open a BLOCKED task through the audited transition function.\n\n``FAILED`` is terminal in the authoritative 00 \u00a77 state machine; the API\nrefuses to bypass that gate and requires a replan instead.  ``reset_budget``\nis explicit because it changes policy-derived retry accounting.",
+        "operationId": "retry_task_v1_tasks__task_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RetryRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    }
+  }
+}

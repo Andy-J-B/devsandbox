@@ -1,0 +1,192 @@
+{
+  "costs": {
+    "budget_requests_remaining": 95,
+    "budget_tokens_remaining": 4500,
+    "inference_usd": 0.05,
+    "infra_usd": 0.1,
+    "requests": 5,
+    "tokens": 500,
+    "total_usd": 0.15
+  },
+  "counts": {
+    "blocked": 1,
+    "cancelled": 0,
+    "completed": 0,
+    "failed": 1,
+    "other": 0,
+    "pending": 1,
+    "ready": 0,
+    "retry_wait": 0,
+    "running": 0,
+    "total": 3
+  },
+  "header": {
+    "base_commit": "base-blocked_chain",
+    "finished_at": "2026-01-01T11:30:00Z",
+    "generated_at": "2026-01-01T12:00:00Z",
+    "main_branch": "main",
+    "mode": "supervised",
+    "name": "Report blocked_chain",
+    "plan_id": "plan-blocked_chain",
+    "plan_version": 1,
+    "project_id": "proj-blocked_chain",
+    "repo_source": "/tmp/demo-repo",
+    "spec_hash": "spec-hash-blocked_chain",
+    "staging_branch": "devsandbox/proj-blocked_chain/staging",
+    "staging_head": null,
+    "started_at": "2026-01-01T10:00:00Z",
+    "status": "failed"
+  },
+  "integrations": [],
+  "outstanding": {
+    "blocked_tasks": [
+      "next: dependency base failed"
+    ],
+    "suggested_actions": [
+      "inspect task base logs and retry or replan",
+      "resolve the failed dependency of task next"
+    ],
+    "unresolved_failures": [
+      "base: base checks failed"
+    ],
+    "warnings": []
+  },
+  "resource_events": [],
+  "staging_instructions": [
+    "Review integrated work: git log main..devsandbox/proj-blocked_chain/staging",
+    "Review the diff: git diff main..devsandbox/proj-blocked_chain/staging",
+    "DevSandbox never merges into the main branch automatically.",
+    "Merge manually when satisfied: git checkout main && git merge --no-ff devsandbox/proj-blocked_chain/staging"
+  ],
+  "tasks": [
+    {
+      "attempt_count": 1,
+      "attempts": [
+        {
+          "base_commit": "base-blocked_chain",
+          "checks": [
+            {
+              "duration_seconds": 1.5,
+              "exit_code": 1,
+              "failure_kind": null,
+              "name": "pytest",
+              "passed": false,
+              "required": true,
+              "status": "failed",
+              "summary": "",
+              "tests_errors": null,
+              "tests_failed": 1,
+              "tests_skipped": 0,
+              "tests_total": 5
+            }
+          ],
+          "commits": [],
+          "duration_seconds": 960.0,
+          "exit_status": "exited_ok",
+          "failure": null,
+          "files_changed": [],
+          "finished_at": "2026-01-01T10:18:00Z",
+          "head_commit": null,
+          "log_pointer": "logs/att-blocked_chain-base-1/stdout.log",
+          "number": 1,
+          "outcome": "exited_ok",
+          "peak_memory_mb": 512,
+          "started_at": "2026-01-01T10:02:00Z",
+          "status": "completed",
+          "token_usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          },
+          "validation_status": "failed",
+          "validation_summary": "base checks failed"
+        }
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "checks": [
+        {
+          "duration_seconds": 1.5,
+          "exit_code": 1,
+          "failure_kind": null,
+          "name": "pytest",
+          "passed": false,
+          "required": true,
+          "status": "failed",
+          "summary": "",
+          "tests_errors": null,
+          "tests_failed": 1,
+          "tests_skipped": 0,
+          "tests_total": 5
+        }
+      ],
+      "commits": [],
+      "duration_seconds": 960.0,
+      "failure": {
+        "detail": {},
+        "kind": "validation_failed",
+        "log_tail_pointer": null,
+        "summary": "base checks failed"
+      },
+      "files_changed": [],
+      "id": "task-blocked_chain-base",
+      "key": "base",
+      "max_retries": 1,
+      "priority": 50,
+      "result": {},
+      "status": "failed",
+      "title": "Task base"
+    },
+    {
+      "attempt_count": 0,
+      "attempts": [],
+      "blocked_by": [
+        "task-blocked_chain-next"
+      ],
+      "blocked_reason": null,
+      "checks": [],
+      "commits": [],
+      "duration_seconds": 0.0,
+      "failure": null,
+      "files_changed": [],
+      "id": "task-blocked_chain-last",
+      "key": "last",
+      "max_retries": 1,
+      "priority": 50,
+      "result": {},
+      "status": "pending",
+      "title": "Task last"
+    },
+    {
+      "attempt_count": 0,
+      "attempts": [],
+      "blocked_by": [
+        "task-blocked_chain-base"
+      ],
+      "blocked_reason": "dependency base failed",
+      "checks": [],
+      "commits": [],
+      "duration_seconds": 240.0,
+      "failure": null,
+      "files_changed": [],
+      "id": "task-blocked_chain-next",
+      "key": "next",
+      "max_retries": 1,
+      "priority": 50,
+      "result": {},
+      "status": "blocked",
+      "title": "Task next"
+    }
+  ],
+  "test_results": [
+    {
+      "check": "pytest",
+      "error": 0,
+      "failed": 1,
+      "passed": 0,
+      "skipped": 0,
+      "timeout": 0,
+      "total": 1
+    }
+  ],
+  "warnings": []
+}

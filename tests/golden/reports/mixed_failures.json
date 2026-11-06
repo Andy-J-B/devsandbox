@@ -1,0 +1,394 @@
+{
+  "costs": {
+    "budget_requests_remaining": 80,
+    "budget_tokens_remaining": 3000,
+    "inference_usd": 0.12,
+    "infra_usd": 0.3,
+    "requests": 20,
+    "tokens": 2000,
+    "total_usd": 0.42
+  },
+  "counts": {
+    "blocked": 0,
+    "cancelled": 0,
+    "completed": 1,
+    "failed": 2,
+    "other": 0,
+    "pending": 0,
+    "ready": 0,
+    "retry_wait": 0,
+    "running": 0,
+    "total": 3
+  },
+  "header": {
+    "base_commit": "base-mixed_failures",
+    "finished_at": "2026-01-01T11:30:00Z",
+    "generated_at": "2026-01-01T12:00:00Z",
+    "main_branch": "main",
+    "mode": "supervised",
+    "name": "Report mixed_failures",
+    "plan_id": "plan-mixed_failures",
+    "plan_version": 1,
+    "project_id": "proj-mixed_failures",
+    "repo_source": "/tmp/demo-repo",
+    "spec_hash": "spec-hash-mixed_failures",
+    "staging_branch": "devsandbox/proj-mixed_failures/staging",
+    "staging_head": "s1",
+    "started_at": "2026-01-01T10:00:00Z",
+    "status": "failed"
+  },
+  "integrations": [
+    {
+      "at": "2026-01-01T11:00:00Z",
+      "attempt_id": "att-mixed_failures-build-1",
+      "conflicting_files": [],
+      "detail": "",
+      "id": "int-mixed_failures-build",
+      "staging_after": "s1",
+      "staging_before": null,
+      "status": "integrated",
+      "task_id": "task-mixed_failures-build"
+    }
+  ],
+  "outstanding": {
+    "blocked_tasks": [],
+    "suggested_actions": [
+      "inspect task flaky logs and retry or replan",
+      "inspect task test logs and retry or replan"
+    ],
+    "unresolved_failures": [
+      "flaky: agent exceeded the time limit",
+      "test: tests failed after retries"
+    ],
+    "warnings": []
+  },
+  "resource_events": [
+    {
+      "at": "2026-01-01T10:59:00Z",
+      "attempt_id": null,
+      "detail": "attempt 1 timed out",
+      "task_id": "task-mixed_failures-flaky",
+      "type": "attempt.timeout"
+    }
+  ],
+  "staging_instructions": [
+    "Review integrated work: git log main..devsandbox/proj-mixed_failures/staging",
+    "Review the diff: git diff main..devsandbox/proj-mixed_failures/staging",
+    "DevSandbox never merges into the main branch automatically.",
+    "Merge manually when satisfied: git checkout main && git merge --no-ff devsandbox/proj-mixed_failures/staging"
+  ],
+  "tasks": [
+    {
+      "attempt_count": 1,
+      "attempts": [
+        {
+          "base_commit": "base-mixed_failures",
+          "checks": [
+            {
+              "duration_seconds": 1.5,
+              "exit_code": 0,
+              "failure_kind": null,
+              "name": "pytest",
+              "passed": true,
+              "required": true,
+              "status": "passed",
+              "summary": "",
+              "tests_errors": null,
+              "tests_failed": 0,
+              "tests_skipped": 0,
+              "tests_total": 10
+            }
+          ],
+          "commits": [
+            {
+              "sha": "c1",
+              "subject": ""
+            }
+          ],
+          "duration_seconds": 960.0,
+          "exit_status": "exited_ok",
+          "failure": null,
+          "files_changed": [
+            "src/app.py"
+          ],
+          "finished_at": "2026-01-01T10:18:00Z",
+          "head_commit": "c1",
+          "log_pointer": "logs/att-mixed_failures-build-1/stdout.log",
+          "number": 1,
+          "outcome": "exited_ok",
+          "peak_memory_mb": 512,
+          "started_at": "2026-01-01T10:02:00Z",
+          "status": "completed",
+          "token_usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          },
+          "validation_status": "passed",
+          "validation_summary": "all checks passed"
+        }
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "checks": [
+        {
+          "duration_seconds": 1.5,
+          "exit_code": 0,
+          "failure_kind": null,
+          "name": "pytest",
+          "passed": true,
+          "required": true,
+          "status": "passed",
+          "summary": "",
+          "tests_errors": null,
+          "tests_failed": 0,
+          "tests_skipped": 0,
+          "tests_total": 10
+        }
+      ],
+      "commits": [
+        {
+          "sha": "c1",
+          "subject": ""
+        }
+      ],
+      "duration_seconds": 960.0,
+      "failure": null,
+      "files_changed": [
+        "src/app.py"
+      ],
+      "id": "task-mixed_failures-build",
+      "key": "build",
+      "max_retries": 1,
+      "priority": 50,
+      "result": {},
+      "status": "completed",
+      "title": "Task build"
+    },
+    {
+      "attempt_count": 1,
+      "attempts": [
+        {
+          "base_commit": "base-mixed_failures",
+          "checks": [
+            {
+              "duration_seconds": 1.5,
+              "exit_code": 1,
+              "failure_kind": null,
+              "name": "pytest",
+              "passed": false,
+              "required": true,
+              "status": "error",
+              "summary": "not run: agent timed out",
+              "tests_errors": null,
+              "tests_failed": 0,
+              "tests_skipped": 0,
+              "tests_total": 0
+            }
+          ],
+          "commits": [],
+          "duration_seconds": 1080.0,
+          "exit_status": "timeout",
+          "failure": null,
+          "files_changed": [],
+          "finished_at": "2026-01-01T10:59:00Z",
+          "head_commit": null,
+          "log_pointer": "logs/att-mixed_failures-flaky-1/stdout.log",
+          "number": 1,
+          "outcome": "timeout",
+          "peak_memory_mb": 512,
+          "started_at": "2026-01-01T10:41:00Z",
+          "status": "failed",
+          "token_usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          },
+          "validation_status": "error",
+          "validation_summary": "agent timed out"
+        }
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "checks": [
+        {
+          "duration_seconds": 1.5,
+          "exit_code": 1,
+          "failure_kind": null,
+          "name": "pytest",
+          "passed": false,
+          "required": true,
+          "status": "error",
+          "summary": "not run: agent timed out",
+          "tests_errors": null,
+          "tests_failed": 0,
+          "tests_skipped": 0,
+          "tests_total": 0
+        }
+      ],
+      "commits": [],
+      "duration_seconds": 1080.0,
+      "failure": {
+        "detail": {},
+        "kind": "timeout",
+        "log_tail_pointer": null,
+        "summary": "agent exceeded the time limit"
+      },
+      "files_changed": [],
+      "id": "task-mixed_failures-flaky",
+      "key": "flaky",
+      "max_retries": 1,
+      "priority": 50,
+      "result": {},
+      "status": "failed",
+      "title": "Task flaky"
+    },
+    {
+      "attempt_count": 2,
+      "attempts": [
+        {
+          "base_commit": "base-mixed_failures",
+          "checks": [
+            {
+              "duration_seconds": 1.5,
+              "exit_code": 1,
+              "failure_kind": null,
+              "name": "pytest",
+              "passed": false,
+              "required": true,
+              "status": "failed",
+              "summary": "2 tests failed",
+              "tests_errors": null,
+              "tests_failed": 2,
+              "tests_skipped": 0,
+              "tests_total": 10
+            }
+          ],
+          "commits": [
+            {
+              "sha": "c2",
+              "subject": ""
+            }
+          ],
+          "duration_seconds": 1080.0,
+          "exit_status": "exited_ok",
+          "failure": null,
+          "files_changed": [
+            "src/app.py",
+            "tests/test_app.py"
+          ],
+          "finished_at": "2026-01-01T10:40:00Z",
+          "head_commit": "c2",
+          "log_pointer": "logs/att-mixed_failures-test-1/stdout.log",
+          "number": 1,
+          "outcome": "exited_ok",
+          "peak_memory_mb": 512,
+          "started_at": "2026-01-01T10:22:00Z",
+          "status": "completed",
+          "token_usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          },
+          "validation_status": "failed",
+          "validation_summary": "2 tests failed"
+        },
+        {
+          "base_commit": "base-mixed_failures",
+          "checks": [
+            {
+              "duration_seconds": 1.5,
+              "exit_code": 1,
+              "failure_kind": null,
+              "name": "pytest",
+              "passed": false,
+              "required": true,
+              "status": "failed",
+              "summary": "2 tests failed",
+              "tests_errors": null,
+              "tests_failed": 2,
+              "tests_skipped": 0,
+              "tests_total": 10
+            }
+          ],
+          "commits": [
+            {
+              "sha": "c3",
+              "subject": ""
+            }
+          ],
+          "duration_seconds": 1080.0,
+          "exit_status": "exited_ok",
+          "failure": null,
+          "files_changed": [],
+          "finished_at": "2026-01-01T10:59:00Z",
+          "head_commit": "c3",
+          "log_pointer": "logs/att-mixed_failures-test-2/stdout.log",
+          "number": 2,
+          "outcome": "exited_ok",
+          "peak_memory_mb": 512,
+          "started_at": "2026-01-01T10:41:00Z",
+          "status": "failed",
+          "token_usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          },
+          "validation_status": "failed",
+          "validation_summary": "2 tests failed"
+        }
+      ],
+      "blocked_by": [],
+      "blocked_reason": null,
+      "checks": [
+        {
+          "duration_seconds": 1.5,
+          "exit_code": 1,
+          "failure_kind": null,
+          "name": "pytest",
+          "passed": false,
+          "required": true,
+          "status": "failed",
+          "summary": "2 tests failed",
+          "tests_errors": null,
+          "tests_failed": 2,
+          "tests_skipped": 0,
+          "tests_total": 10
+        }
+      ],
+      "commits": [
+        {
+          "sha": "c2",
+          "subject": ""
+        },
+        {
+          "sha": "c3",
+          "subject": ""
+        }
+      ],
+      "duration_seconds": 2160.0,
+      "failure": {
+        "detail": {},
+        "kind": "validation_failed",
+        "log_tail_pointer": "logs/att-mixed_failures-test-2/stdout.log",
+        "summary": "tests failed after retries"
+      },
+      "files_changed": [],
+      "id": "task-mixed_failures-test",
+      "key": "test",
+      "max_retries": 1,
+      "priority": 50,
+      "result": {},
+      "status": "failed",
+      "title": "Task test"
+    }
+  ],
+  "test_results": [
+    {
+      "check": "pytest",
+      "error": 1,
+      "failed": 2,
+      "passed": 1,
+      "skipped": 0,
+      "timeout": 0,
+      "total": 4
+    }
+  ],
+  "warnings": []
+}

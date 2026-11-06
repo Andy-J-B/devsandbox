@@ -391,9 +391,7 @@ def _outstanding(tasks: list[ReportTask], warnings: list[str]) -> ReportOutstand
     for report_task in tasks:
         if report_task.status == TaskStatus.FAILED.value:
             reason = (
-                report_task.failure.summary
-                if report_task.failure is not None
-                else "task failed"
+                report_task.failure.summary if report_task.failure is not None else "task failed"
             )
             unresolved.append(f"{report_task.key}: {reason}")
             actions.append(f"inspect task {report_task.key} logs and retry or replan")
@@ -406,9 +404,7 @@ def _outstanding(tasks: list[ReportTask], warnings: list[str]) -> ReportOutstand
     for report_task in tasks:
         for attempt in report_task.attempts:
             if attempt.failure and attempt.failure.kind == "git_conflict":
-                actions.append(
-                    f"rebase task {report_task.key} onto the current staging head"
-                )
+                actions.append(f"rebase task {report_task.key} onto the current staging head")
     return ReportOutstanding(
         unresolved_failures=unresolved,
         blocked_tasks=blocked,
