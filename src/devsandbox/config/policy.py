@@ -54,6 +54,10 @@ class SecurityPolicy:
         """Return whether integrating into the main branch is permitted."""
         return self._settings.security.allow_main_merge
 
+    def autonomous_mode_allowed(self) -> bool:
+        """Return whether projects may be escalated to autonomous mode."""
+        return self._settings.security.allow_autonomous_mode
+
     def max_retries(self, requested: int) -> int:
         """Return the effective retry budget (never above the policy default)."""
         return min(requested, self._settings.retries.default_max_retries)

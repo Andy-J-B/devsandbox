@@ -55,6 +55,7 @@ class SecurityConfig(BaseModel):
     allow_network_default: bool = True
     allow_push: bool = False
     allow_main_merge: bool = False
+    allow_autonomous_mode: bool = True
     allowed_images: list[str] = Field(default_factory=list)
 
 
@@ -131,6 +132,7 @@ class ApiSettings(BaseModel):
     max_log_lines: int = 5_000
     expensive_rate_limit_per_minute: int = 60
     request_id_header: str = "X-Request-ID"
+    run_engine: bool = True
 
     @field_validator("port")
     @classmethod

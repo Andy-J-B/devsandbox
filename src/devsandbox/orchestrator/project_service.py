@@ -233,6 +233,42 @@ class ProjectService:
             await session.commit()
         return plan
 
+    # ----------------------------------------------------------------- reject
+    async def reject_plan(
+        self,
+        project_id: str,
+        plan_id: str,
+        *,
+        reason: str = "rejected by user",
+        rejected_by: str = "user",
+    ) -> Plan:
+        """Reject a proposed plan without changing the project state.
+
+        The project remains in ``AWAITING_APPROVAL`` so the operator can submit
+        a new plan version, cancel, or edit policy-compliant inputs.  Execution
+        can never start from a rejected plan because only active plans are
+        approved.
+        """
+        async with self._session_factory() as session:
+            project = await ProjectRepo(session, is_legal_project).get(project_id)
+            if project is None:
+                raise ProjectNotFoundError(f"project {project_id} not found")
+            if ProjectStatus(project.status) is not ProjectStatus.AWAITING_APPROVAL:
+                raise InvalidTransition(
+                    f"project {project_id} is {project.status}, not awaiting approval"
+                )
+            service = self._plan_service(session)
+            plan = await service.reject_plan(plan_id, reason)
+            if plan.project_id not in {"", project_id}:
+                raise InvalidTransition(f"plan {plan_id} does not belong to project {project_id}")
+            await session.commit()
+        await self._event(
+            project_id,
+            "plan.rejected",
+            payload={"plan_id": plan_id, "reason": reason, "rejected_by": rejected_by},
+        )
+        return plan
+
     # --------------------------------------------------------------- controls
     async def start(self, project_id: str) -> ProjectModel:
         """Start/resume execution (``PAUSED`` -> ``EXECUTING``; idempotent)."""
@@ -346,6 +382,8 @@ class ProjectService:
                 "autonomous mode upgrade requires an explicit user/API call; "
                 f"requested by {requested_by!r}"
             )
+        if direction is ModeChangeDirection.UPGRADE and not self.policy.autonomous_mode_allowed():
+            raise PolicyViolation("autonomous mode is disabled by security policy")
         async with self._session_factory() as session:
             stored = await ProjectRepo(session, is_legal_project).get(project_id)
             if stored is None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Any, cast
 
 import structlog
@@ -41,7 +42,9 @@ structlog.configure(
         structlog.processors.JSONRenderer(),
     ],
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
-    logger_factory=structlog.PrintLoggerFactory(),
+    # Machine-readable output (CLI --json, report JSON) must never be polluted
+    # by request logs; structlog writes to stderr like every other CLI tool.
+    logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
     cache_logger_on_first_use=True,
 )
 
