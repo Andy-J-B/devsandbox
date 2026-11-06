@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+.mypy_cache
+.pytest_cache
+.ruff_cache
+__pycache__
+*.py[cod]
+docs
+plans
+scripts
+tests
+data
+.devsandbox

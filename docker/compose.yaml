@@ -1,3 +1,20 @@
+# DevSandbox local compose stack (plan 10).
+#
+# Security notes:
+#   * Postgres and the API are published on loopback only.
+#   * The orchestrator needs the host Docker daemon to launch sandboxes.  This
+#     is a real trade-off: docker.sock access is effectively host root.  Prefer
+#     running the orchestrator on the host (`devsandbox serve`), or use a
+#     rootless/dedicated daemon with a restricted socket.  Never add
+#     docker.sock to agent-base/validator containers — the sandbox manager
+#     never passes it and those images have no Docker CLI.
+#   * The data root is bind-mounted at the SAME absolute path inside the
+#     container and on the host.  The Docker daemon resolves bind sources on
+#     the host, so container-only paths would break workspace mounts.
+#   * Agent/validator images must exist on the host daemon before starting:
+#       docker/agent-base/build.sh
+#       docker build -t devsandbox/validator:latest docker/validator-base
+
 services:
   postgres:
     image: postgres:16
@@ -6,7 +23,7 @@ services:
       POSTGRES_PASSWORD: devsandbox
       POSTGRES_DB: devsandbox
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,13 +35,36 @@ services:
   orchestrator:
     image: devsandbox/orchestrator:local
     build:
-      context: .
-      dockerfile: docker/agent-base/Dockerfile
-      args:
-        OPENCODE_VERSION: "1.19.5"
+      context: ..
+      dockerfile: docker/orchestrator/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      DEVSANDBOX_DATABASE_URL: postgresql+asyncpg://devsandbox:devsandbox@postgres:5432/devsandbox
+      # Required: the API refuses to serve without a token.
+      DEVSANDBOX_API_TOKEN: ${DEVSANDBOX_API_TOKEN:?set DEVSANDBOX_API_TOKEN}
+      DEVSANDBOX_DATA_ROOT: ${DEVSANDBOX_DATA_ROOT:-/var/lib/devsandbox}
+      DEVSANDBOX_API__HOST: 0.0.0.0
+      DEVSANDBOX_API__PORT: "8000"
+      DEVSANDBOX_SECURITY__ALLOW_MAIN_MERGE: "false"
+      DEVSANDBOX_SECURITY__ALLOW_PUSH: "false"
+      # Project repos given as local paths must also exist at the same path
+      # inside this container (mount their parent explicitly), or use URLs.
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same absolute path on host and container; override with an absolute
+      # writable host path, e.g. DEVSANDBOX_DATA_ROOT=$HOME/.local/share/devsandbox
+      - ${DEVSANDBOX_DATA_ROOT:-/var/lib/devsandbox}:${DEVSANDBOX_DATA_ROOT:-/var/lib/devsandbox}
+    # Linux: allow the unprivileged container user to open the socket group.
+    # Get the gid with: stat -c '%g' /var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-999}"
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
 
 volumes:
   pgdata:

@@ -7,13 +7,19 @@ results independently, and integrates validated work into a staging branch.
 
 ## Status
 
-Plans 01–08 are implemented: foundation/config/DB/spec, Docker sandbox
+Plans 01–10 are implemented: foundation/config/DB/spec, Docker sandbox
 manager, git manager, the agent adapter layer (OpenCode + deterministic fake
 agent), repository analysis/context, the planner/task-graph lifecycle, the
-deterministic scheduler/resource monitor, and the orchestrator core (state
-machine, execution loop, retries/circuit breakers, crash recovery).
-See `plans/` for the authoritative build plan and `docs/` for per-module
-documentation; [`docs/orchestrator.md`](docs/orchestrator.md) and
+deterministic scheduler/resource monitor, the orchestrator core (state
+machine, execution loop, retries/circuit breakers, crash recovery), the
+independent validator, and the FastAPI API, Typer CLI, and project reports.
+
+Start with [`docs/quickstart.md`](docs/quickstart.md). The HTTP API and CLI are
+documented in [`docs/api.md`](docs/api.md) and [`docs/cli.md`](docs/cli.md);
+report contents are in [`docs/reporting.md`](docs/reporting.md). The generated
+schema is committed at [`docs/openapi.json`](docs/openapi.json). See `plans/`
+for the authoritative build plan and `docs/` for per-module documentation;
+[`docs/orchestrator.md`](docs/orchestrator.md) and
 [`docs/recovery.md`](docs/recovery.md) cover execution and startup
 reconciliation.
 

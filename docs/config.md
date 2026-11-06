@@ -9,7 +9,11 @@ optional `devsandbox.toml` file (see plan 01 deliverables).
   `pressure_cpu_pct`, `pressure_mem_pct`
 - `retries`: `default_max_retries`, `backoff_base_seconds`, `backoff_max_seconds`
 - `security`: `allow_network_default`, `allow_push`, `allow_main_merge`,
-  `allowed_images`
+  `allow_autonomous_mode` (supervised → autonomous escalation), `allowed_images`
+- `api`: `host` (default `127.0.0.1`), `port`, `token` (prefer the top-level
+  `DEVSANDBOX_API_TOKEN` alias), `max_spec_bytes`, `max_log_bytes`,
+  `max_log_lines`, `expensive_rate_limit_per_minute`, `request_id_header`,
+  `run_engine`
 - `agent`: `default_runtime`, `default_model`, `model_budget`
 - `validation`: independent validation policy (plan 09)
   - `image` (default `devsandbox/validator:latest`), `max_output_bytes`

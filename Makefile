@@ -1,8 +1,13 @@
+COMPOSE ?= docker compose -f docker/compose.yaml
+
 up:
-	docker compose up -d postgres
+	$(COMPOSE) up -d postgres
 
 down:
-	docker compose down
+	$(COMPOSE) down
+
+orchestrator:
+	DEVSANDBOX_API_TOKEN=$${DEVSANDBOX_API_TOKEN:?set DEVSANDBOX_API_TOKEN} $(COMPOSE) up -d orchestrator
 
 migrate:
 	alembic upgrade head
