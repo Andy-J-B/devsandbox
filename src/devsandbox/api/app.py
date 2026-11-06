@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from ..common.errors import ConfigError
@@ -119,6 +120,33 @@ def create_app(
     app.include_router(events.router, prefix="/v1")
     app.include_router(reports.router, prefix="/v1")
     app.include_router(system.router, prefix="/v1")
+
+    def _openapi() -> dict[str, Any]:
+        """Add the bearer scheme enforced by the middleware to the schema."""
+        if app.openapi_schema is not None:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        components = schema.setdefault("components", {})
+        components.setdefault("securitySchemes", {})["BearerAuth"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "opaque",
+            "description": "Static token from DEVSANDBOX_API_TOKEN.",
+        }
+        schema["security"] = [{"BearerAuth": []}]
+        for probe in ("/healthz", "/readyz"):
+            for operation in schema.get("paths", {}).get(probe, {}).values():
+                if isinstance(operation, dict):
+                    operation["security"] = []
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = _openapi  # type: ignore[method-assign]
 
     @app.middleware("http")
     async def _middleware(
