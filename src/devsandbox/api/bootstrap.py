@@ -26,6 +26,8 @@ from ..orchestrator.engine import OrchestratorEngine
 from ..orchestrator.models import OrchestratorConfig
 from ..orchestrator.project_service import ProjectService
 from ..orchestrator.recovery import RecoveryService
+from ..planner.models import FailureRecord as PlannerFailureRecord
+from ..planner.models import Plan
 from ..planner.service import PlanService
 from ..planner.templates import TemplatePlanner
 from ..sandbox.manager import DockerSandboxManager
@@ -145,6 +147,23 @@ def build_container(
         sandbox=sandbox,
         config=OrchestratorConfig.from_settings(resolved),
     )
+
+    def plan_services(session: AsyncSession) -> PlanService:
+        return PlanService(
+            session,
+            planner,
+            policy,
+            context_manager=context,
+            settings=resolved,
+            auto_approve=True,
+        )
+
+    async def replanner(project_id: str, failures: list[PlannerFailureRecord]) -> Plan:
+        async with session_factory() as session:
+            plan = await plan_services(session).replan(project_id, failures)
+            await session.commit()
+            return plan
+
     engine = OrchestratorEngine(
         session_factory=session_factory,
         git=git,
@@ -160,17 +179,8 @@ def build_container(
         scheduler_config=SchedulerConfig.from_settings(resolved),
         project_service=projects,
         recovery=recovery,
+        replanner=replanner,
     )
-
-    def plan_services(session: AsyncSession) -> PlanService:
-        return PlanService(
-            session,
-            planner,
-            policy,
-            context_manager=context,
-            settings=resolved,
-            auto_approve=True,
-        )
 
     return AppContainer(
         settings=resolved,

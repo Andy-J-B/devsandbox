@@ -6,9 +6,10 @@ integration path without any LLM or network access.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import SecretStr
 
@@ -63,6 +64,7 @@ class FakeScriptAdapter:
         mode: FakeAgentMode = "success",
         extra_args: Sequence[str] = (),
         secret_env: dict[str, SecretStr] | None = None,
+        faults: Any | None = None,
     ) -> None:
         if mode not in _MODE_FLAGS:
             raise ValueError(f"unknown fake agent mode: {mode}")
@@ -72,6 +74,7 @@ class FakeScriptAdapter:
         self._mode = mode
         self._extra_args = list(extra_args)
         self._secret_env = dict(secret_env or {})
+        self._faults = faults
 
     async def run(self, req: AgentRunRequest) -> AgentRunResult:
         """Run the fake agent for ``req`` and map the container result."""
@@ -102,7 +105,11 @@ class FakeScriptAdapter:
         )
 
         started_at = utcnow()
-        result = await self._sandbox.run(sandbox_request)
+        run_task = asyncio.create_task(self._sandbox.run(sandbox_request))
+        if self._faults is not None:
+            await self._await_container(req)
+            await self._faults.checkpoint("after_container_started")
+        result = await run_task
         duration = (utcnow() - started_at).total_seconds()
         stdout = read_log_text(result.stdout_path)
         stderr = read_log_text(result.stderr_path)
@@ -117,6 +124,18 @@ class FakeScriptAdapter:
             summary=summary,
             duration_seconds=duration,
         )
+
+    async def _await_container(self, req: AgentRunRequest) -> None:
+        """Wait until the sandbox manager has created the attempt container."""
+        container_id = f"ds-{req.workspace.attempt_id}"
+        for _ in range(1200):
+            found = await self._sandbox.inspect(container_id)
+            if found is not None:
+                return
+            for container in await self._sandbox.list_managed():
+                if container.labels.get("devsandbox.attempt") == str(req.workspace.attempt_id):
+                    return
+            await asyncio.sleep(0.05)
 
     async def cancel(self, attempt_id: AttemptId) -> None:
         """Kill the deterministic container for ``attempt_id``."""

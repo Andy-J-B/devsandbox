@@ -690,6 +690,7 @@ class OrchestratorEngine:
         # The attempts row is now durable; the DB count includes it.
         self._release_attempt_reservation(str(task_id))
         await self.faults.checkpoint("after_attempt_created")
+        await self.faults.checkpoint("after_attempt_row")
 
         # 2. Workspace + context bundle (recoverable: SCHEDULED -> READY on infra).
         try:
@@ -980,6 +981,7 @@ class OrchestratorEngine:
                 task_id, attempt_id, record, stage="restricted_paths", pre_agent=False
             )
             return
+        await self.faults.checkpoint("after_collect")
         async with self._session_factory() as session:
             attempt = await AttemptRepo(session).get(str(attempt_id))
             if attempt is not None:
@@ -1022,6 +1024,7 @@ class OrchestratorEngine:
             return
         await self._persist_validation(attempt_id, report)
         await self.faults.checkpoint("after_validation")
+        await self.faults.checkpoint("after_validation_report")
         if report.status != "passed":
             await self._handle_failure(
                 task_id,
@@ -1130,6 +1133,7 @@ class OrchestratorEngine:
         try:
             if callable(prepare):
                 candidate = await prepare(repo, workspace, changes)
+                await self.faults.checkpoint("after_prepare_integration")
                 if candidate.conflicted:
                     abort = getattr(self.git, "abort_integration", None)
                     if callable(abort):
@@ -1190,6 +1194,7 @@ class OrchestratorEngine:
                 result = await commit(candidate)
             else:
                 result = await self.git.integrate_to_staging(repo, workspace, changes)
+            await self.faults.checkpoint("after_staging_advance_before_db")
         except Exception as exc:
             await self._handle_failure(
                 task_id,

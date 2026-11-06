@@ -513,23 +513,38 @@ class GitManagerImpl:
         return res.stdout.strip() or None
 
     def _make_container_writable(self, path: Path) -> None:
-        """Best-effort: make ``path`` writable by container uid 1000."""
-        try:
-            if os.geteuid() == 0:
+        """Make ``path`` writable by the container's uid 1000.
+
+        On Linux the orchestrator may run as root and can ``chown`` the tree.
+        On macOS (and any non-root host) ownership cannot be changed, so the
+        tree is made world-writable instead; the workspace contains only
+        untrusted attempt data, and the canonical bare repo is never touched.
+        """
+        if os.geteuid() == 0:
+            try:
                 os.chown(path, _CONTAINER_UID, _CONTAINER_UID)
-                for root, _dirs, files in os.walk(path):
-                    for d in _dirs:
-                        os.chown(os.path.join(root, d), _CONTAINER_UID, _CONTAINER_UID)
-                    for f in files:
-                        os.chown(os.path.join(root, f), _CONTAINER_UID, _CONTAINER_UID)
-        except (PermissionError, OSError, AttributeError):
-            # Fall back to world-writable so uid 1000 can write.
-            with contextlib.suppress(OSError):
-                os.chmod(path, 0o777)
-                for root, _dirs, _files in os.walk(path):
-                    for d in _dirs:
-                        with contextlib.suppress(OSError):
-                            os.chmod(os.path.join(root, d), 0o777)
+                for root, dirs, files in os.walk(path):
+                    for name in dirs:
+                        os.chown(os.path.join(root, name), _CONTAINER_UID, _CONTAINER_UID)
+                    for name in files:
+                        os.chown(os.path.join(root, name), _CONTAINER_UID, _CONTAINER_UID)
+                return
+            except (PermissionError, OSError, AttributeError):
+                pass
+        # Fall back to permissive modes (uid 1000 can write).  Only write bits
+        # are added, so executable bits are preserved.
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o777)
+        for root, dirs, files in os.walk(path):
+            for name in dirs:
+                with contextlib.suppress(OSError):
+                    os.chmod(os.path.join(root, name), 0o777)
+            for name in files:
+                with contextlib.suppress(OSError):
+                    target = os.path.join(root, name)
+                    if not os.path.islink(target):
+                        mode = os.stat(target).st_mode
+                        os.chmod(target, mode | 0o666)
 
     def _reject_dangerous_hooks(self, repo_path: str | Path) -> None:
         """Reject executable non-sample hooks in an untrusted workspace."""
