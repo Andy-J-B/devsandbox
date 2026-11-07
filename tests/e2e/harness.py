@@ -54,9 +54,10 @@ from devsandbox.db.repositories import (
     TaskRepo,
 )
 from devsandbox.gitmgr.manager import GitManagerImpl
-from devsandbox.orchestrator.engine import OrchestratorEngine
+from devsandbox.orchestrator.engine import FaultInjector, OrchestratorEngine
 from devsandbox.orchestrator.models import OrchestratorConfig
 from devsandbox.orchestrator.project_service import ProjectService
+from devsandbox.orchestrator.recovery import RecoveryService
 from devsandbox.planner.models import (
     FailureRecord as PlannerFailureRecord,
 )
@@ -400,6 +401,8 @@ def build_context(
     monitor: Any | None = None,
     orchestrator_config: OrchestratorConfig | None = None,
     scheduler_config: SchedulerConfig | None = None,
+    faults: FaultInjector | None = None,
+    lease_holder: str | None = None,
 ) -> E2EContext:
     """Wire the real plan-11 services around a session factory and agent."""
     root = Path(data_root or settings.data_root)
@@ -465,6 +468,12 @@ def build_context(
             await session.commit()
             return plan
 
+    recovery = RecoveryService(
+        session_factory,
+        git=git,
+        sandbox=sandbox,
+        config=engine_config,
+    )
     engine = OrchestratorEngine(
         session_factory=session_factory,
         git=git,
@@ -480,6 +489,9 @@ def build_context(
         scheduler_config=scheduler_config,
         project_service=projects,
         replanner=replanner,
+        recovery=recovery,
+        faults=faults,
+        lease_holder=lease_holder,
     )
     return E2EContext(
         settings=settings,

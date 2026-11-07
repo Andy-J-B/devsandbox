@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 import pytest
+from tests.e2e.agents import Script
+from tests.e2e.harness import (
+    FixedPlanner,
+    assert_no_managed_containers,
+    task_draft,
+    task_statuses,
+)
+from tests.fakes.scheduler import FakeResourceMonitor
 
 from devsandbox.common.types import (
     ProjectMode,
@@ -13,14 +21,6 @@ from devsandbox.common.types import (
 from devsandbox.db.repositories import PlanRepo
 from devsandbox.reporting.builder import build_report
 from devsandbox.scheduler.models import PressureState
-from tests.fakes.scheduler import FakeResourceMonitor
-from tests.e2e.agents import Script
-from tests.e2e.harness import (
-    FixedPlanner,
-    assert_no_managed_containers,
-    task_draft,
-    task_statuses,
-)
 
 
 @pytest.mark.e2e
@@ -36,13 +36,9 @@ async def test_e9_flaky_agent_retries_then_succeeds_with_failure_context(e2e_env
             ]
         }
     )
-    planner = FixedPlanner(
-        lambda spec: [task_draft("flaky", max_retries=2, timeout_seconds=120)]
-    )
+    planner = FixedPlanner(lambda spec: [task_draft("flaky", max_retries=2, timeout_seconds=120)])
     ctx = env.context(agent, planner=planner)
-    project_id, _ = await ctx.submit_and_run(
-        env.spec(name="e9-flaky", max_retries=2), timeout=240
-    )
+    project_id, _ = await ctx.submit_and_run(env.spec(name="e9-flaky", max_retries=2), timeout=240)
 
     task = (await ctx.tasks(project_id))[0]
     assert TaskStatus(task.status) is TaskStatus.COMPLETED
@@ -104,9 +100,7 @@ async def test_e11_agent_timeout_is_killed_and_fails(e2e_env) -> None:
     """E11: an infinite loop is killed by the sandbox timeout."""
     env = e2e_env
     agent = env.agent(scripts={"hangs": Script(mode="hang")})
-    planner = FixedPlanner(
-        lambda spec: [task_draft("hangs", max_retries=0, timeout_seconds=2)]
-    )
+    planner = FixedPlanner(lambda spec: [task_draft("hangs", max_retries=0, timeout_seconds=2)])
     ctx = env.context(agent, planner=planner)
     project_id, _ = await ctx.submit_and_run(
         env.spec(name="e11-timeout", max_retries=0, task_timeout_seconds=2), timeout=120
@@ -138,9 +132,7 @@ async def test_e11_memory_hog_is_oom_killed(e2e_env) -> None:
                 "hog",
                 max_retries=0,
                 timeout_seconds=30,
-                resources=ResourceProfile(
-                    cpu_cores=0.5, memory_mb=64, disk_mb=512, pids_limit=64
-                ),
+                resources=ResourceProfile(cpu_cores=0.5, memory_mb=64, disk_mb=512, pids_limit=64),
             )
         ]
     )
@@ -232,15 +224,11 @@ async def test_e13_autonomous_dag_with_bounded_replan(e2e_env) -> None:
             task_draft("start", max_retries=0, timeout_seconds=120),
             task_draft("left", depends_on=["start"], max_retries=0, timeout_seconds=120),
             task_draft("flaky", depends_on=["start"], max_retries=0, timeout_seconds=120),
-            task_draft(
-                "finish", depends_on=["left", "flaky"], max_retries=0, timeout_seconds=120
-            ),
+            task_draft("finish", depends_on=["left", "flaky"], max_retries=0, timeout_seconds=120),
         ]
 
     agent = env.agent(
-        scripts={
-            "flaky": [Script(mode="fail"), Script(file="docs/flaky-replanned.md")]
-        }
+        scripts={"flaky": [Script(mode="fail"), Script(file="docs/flaky-replanned.md")]}
     )
     planner = FixedPlanner(tasks)
     ctx = env.context(
@@ -287,9 +275,7 @@ async def test_e14_report_contains_changes_failures_and_costs(e2e_env) -> None:
         env.spec(name="e14-report", max_retries=1), timeout=180
     )
 
-    report = await build_report(
-        project_id, ctx.session_factory, settings=env.settings, git=ctx.git
-    )
+    report = await build_report(project_id, ctx.session_factory, settings=env.settings, git=ctx.git)
     assert report.counts.total == 2
     assert report.counts.failed == 1
     assert report.counts.blocked == 1
