@@ -29,7 +29,10 @@ from typing import Any
 
 import docker
 from docker.errors import APIError, ImageNotFound, NotFound  # type: ignore[import-not-found]
-from requests.exceptions import ReadTimeout  # type: ignore[import-untyped]
+from requests.exceptions import (  # type: ignore[import-untyped]
+    ConnectionError as RequestsConnectionError,
+    ReadTimeout,
+)
 
 from ..common.errors import PolicyViolation, SandboxError
 from ..common.redaction import redact
@@ -140,7 +143,14 @@ class DockerSandboxManager:
                     timeout=req.timeout_seconds + _WAIT_EXTRA_SECONDS,
                 )
                 exit_code = int(wait_result.get("StatusCode", 0) or 0)
-            except (ReadTimeout, TimeoutError):
+            except (ReadTimeout, TimeoutError, RequestsConnectionError) as exc:
+                # docker-py raises ``requests.ConnectionError`` wrapping a read
+                # timeout on some daemon/transport versions.  Re-raise real
+                # connection failures instead of misreporting them as timeouts.
+                if isinstance(exc, RequestsConnectionError) and "timed out" not in str(
+                    exc
+                ).lower():
+                    raise
                 timed_out = True
                 await asyncio.to_thread(container.kill, signal="SIGTERM")
                 try:
@@ -149,7 +159,7 @@ class DockerSandboxManager:
                         timeout=_GRACE_SECONDS + 5.0,
                     )
                     exit_code = int(wait_result.get("StatusCode", 0) or 0) if wait_result else None
-                except (ReadTimeout, TimeoutError):
+                except (ReadTimeout, TimeoutError, RequestsConnectionError):
                     await asyncio.to_thread(container.kill, signal="SIGKILL")
                     await asyncio.to_thread(container.wait)
                     exit_code = None

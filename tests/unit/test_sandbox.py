@@ -270,6 +270,56 @@ def test_run_allowlist_network_raises_without_falling_back_to_full() -> None:
         asyncio.run(manager.run(req))
 
 
+class _ReadTimeoutContainer(FakeContainer):
+    """Container whose first ``wait`` call raises a docker-py read timeout."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.wait_calls = 0
+
+    def wait(self, timeout: int | None = None) -> dict[str, Any]:
+        from requests.exceptions import ConnectionError as RequestsConnectionError
+
+        self.wait_calls += 1
+        if self.wait_calls == 1:
+            raise RequestsConnectionError(
+                "UnixHTTPConnectionPool(host='localhost', port=None): Read timed out."
+            )
+        return {"StatusCode": 137}
+
+
+def test_run_treats_requests_read_timeout_as_sandbox_timeout() -> None:
+    """docker-py can surface read timeouts as requests.ConnectionError."""
+    client = FakeDockerClient()
+    container = _ReadTimeoutContainer()
+    manager = _make_manager(client=client)
+    req = _make_request()
+
+    import asyncio
+
+    async def run_with_fake_container() -> Any:
+        # Make containers.run return our timeout container.
+        original_run = client.containers.run
+
+        def run(**kwargs: Any) -> _ReadTimeoutContainer:
+            client.containers.run_kwargs.append(kwargs)
+            client.containers._containers[container.id] = container
+            return container
+
+        client.containers.run = run  # type: ignore[method-assign]
+        try:
+            return await manager.run(req)
+        finally:
+            client.containers.run = original_run  # type: ignore[method-assign]
+
+    result = asyncio.run(run_with_fake_container())
+
+    assert result.timed_out is True
+    assert result.exit_code == 137
+    assert container.killed is True
+    assert container.removed is True
+
+
 def test_run_creates_container_and_returns_result() -> None:
     client = FakeDockerClient()
     manager = _make_manager(client=client)
