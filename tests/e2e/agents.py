@@ -28,6 +28,7 @@ class Script:
     file: str | None = None
     content: str | None = None
     extra_args: tuple[str, ...] = ()
+    command: tuple[str, ...] | None = None
 
     def args(self) -> list[str]:
         args = list(self.extra_args)
@@ -65,6 +66,7 @@ class ScriptedAgent:
         default: Script | None = None,
         secret_env: dict[str, object] | None = None,
         faults: object | None = None,
+        delay_seconds: float = 0.0,
     ) -> None:
         self.sandbox = sandbox
         self.settings = settings
@@ -73,8 +75,11 @@ class ScriptedAgent:
         self._default = default
         self._secret_env = secret_env or {}
         self._faults = faults
+        self._delay_seconds = delay_seconds
         self.requests: list[AgentRunRequest] = []
         self._counts: dict[str, int] = {}
+        self.active = 0
+        self.peak_active = 0
 
     def _next_script(self, req: AgentRunRequest) -> Script:
         key = req.task.title
@@ -93,16 +98,27 @@ class ScriptedAgent:
         """Record the request, select a script, and run it in a real sandbox."""
         self.requests.append(req.model_copy(deep=True))
         script = self._next_script(req)
-        adapter = FakeScriptAdapter(
-            self.sandbox,
-            self.settings,
-            image=self._image,
-            mode=script.mode,
-            extra_args=script.args(),
-            secret_env=self._secret_env,  # type: ignore[arg-type]
-            faults=self._faults,
-        )
-        return await adapter.run(req)
+        self.active += 1
+        self.peak_active = max(self.peak_active, self.active)
+        try:
+            if self._delay_seconds:
+                import asyncio
+
+                await asyncio.sleep(self._delay_seconds)
+            if script.command is not None:
+                return await self.raw_run(req, command=list(script.command))
+            adapter = FakeScriptAdapter(
+                self.sandbox,
+                self.settings,
+                image=self._image,
+                mode=script.mode,
+                extra_args=script.args(),
+                secret_env=self._secret_env,  # type: ignore[arg-type]
+                faults=self._faults,
+            )
+            return await adapter.run(req)
+        finally:
+            self.active -= 1
 
     async def cancel(self, attempt_id: AttemptId) -> None:
         """Cancel a running attempt (delegates to the sandbox)."""

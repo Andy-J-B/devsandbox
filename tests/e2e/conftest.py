@@ -79,6 +79,7 @@ class E2EEnvironment:
         default: Script | None = None,
         secret_env: dict[str, Any] | None = None,
         faults: Any | None = None,
+        delay_seconds: float = 0.0,
     ) -> ScriptedAgent:
         """Create a scripted agent backed by a fresh real sandbox manager."""
         sandbox = DockerSandboxManager(self.settings, self.data_root)
@@ -91,6 +92,7 @@ class E2EEnvironment:
             default=default,
             secret_env=secret_env,
             faults=faults,
+            delay_seconds=delay_seconds,
         )
 
     def context(
@@ -98,6 +100,7 @@ class E2EEnvironment:
         agent: ScriptedAgent,
         *,
         planner: Any | None = None,
+        monitor: Any | None = None,
         scheduler_config: SchedulerConfig | None = None,
     ) -> E2EContext:
         """Wire the real orchestrator services around ``agent``."""
@@ -108,8 +111,18 @@ class E2EEnvironment:
             planner=planner,
             data_root=self.data_root,
             sandbox=agent.sandbox,  # type: ignore[arg-type]
+            monitor=monitor,
             scheduler_config=scheduler_config,
         )
+
+    def configure(self, **overrides: Any) -> DevSandboxSettings:
+        """Replace this test's settings (call before creating agents)."""
+        self.settings = make_settings(
+            data_root=self.data_root,
+            database_url=self.settings.database_url,
+            **overrides,
+        )
+        return self.settings
 
     def spec(
         self,

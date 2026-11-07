@@ -397,6 +397,7 @@ def build_context(
     planner: Any | None = None,
     data_root: Path | None = None,
     sandbox: DockerSandboxManager | None = None,
+    monitor: Any | None = None,
     orchestrator_config: OrchestratorConfig | None = None,
     scheduler_config: SchedulerConfig | None = None,
 ) -> E2EContext:
@@ -432,7 +433,7 @@ def build_context(
     resolved_planner = planner or TemplatePlanner()
     scheduler_config = scheduler_config or SchedulerConfig.from_settings(settings)
     scheduler = DeterministicScheduler(scheduler_config)
-    monitor = PsutilResourceMonitor(scheduler_config, data_root=root)
+    monitor = monitor or PsutilResourceMonitor(scheduler_config, data_root=root)
     projects = ProjectService(
         session_factory,
         git=git,
