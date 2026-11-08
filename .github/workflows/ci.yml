@@ -52,6 +52,7 @@ jobs:
       DEVSANDBOX_RUN_VALIDATION_INTEGRATION: "1"
       DEVSANDBOX_DATABASE_URL: postgresql+asyncpg://devsandbox:devsandbox@localhost:5432/devsandbox
       DEVSANDBOX_VALIDATOR_IMAGE: devsandbox/validator:latest
+      DEVSANDBOX_SOAK_RUNS: "50"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -63,9 +64,9 @@ jobs:
       - name: build validator image
         run: docker build -t devsandbox/validator:latest docker/validator-base
       - name: e2e
-        run: pytest -q -m "e2e or security"
+        run: pytest -q -m "e2e or security or contract"
       - name: docker-manager integration
-        run: pytest -q -m "docker and not e2e and not security"
+        run: pytest -q -m "docker and not e2e and not security and not contract"
 
   opencode-smoke:
     name: opencode smoke (manual)
