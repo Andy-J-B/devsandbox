@@ -169,6 +169,7 @@ class GitManagerImpl:
         """
         # 1. .git sanity (hooks are never executed because run_git sets
         #    core.hooksPath=/dev/null on every invocation).
+        self._reject_dangerous_git_config(ws.path)
         await run_git(["fsck", "--connectivity-only"], cwd=ws.path)
         head_res = await run_git(["rev-parse", "--verify", "HEAD"], cwd=ws.path)
         head_commit = head_res.stdout.strip()
@@ -545,6 +546,49 @@ class GitManagerImpl:
                     if not os.path.islink(target):
                         mode = os.stat(target).st_mode
                         os.chmod(target, mode | 0o666)
+
+    def _reject_dangerous_git_config(self, repo_path: str | Path) -> None:
+        """Reject local git config that can execute host commands.
+
+        An agent owns its workspace, including ``.git/config``.  Git honours
+        local keys such as ``core.fsmonitor``, ``core.sshCommand``, hooks,
+        external diff drivers, and filters; those are commands, so trusting a
+        workspace-local config would be host code execution.  ``include`` /
+        ``includeIf`` can hide such keys in another file, so they are rejected
+        too.
+        """
+        config_path = Path(repo_path) / ".git" / "config"
+        if not config_path.is_file():
+            return
+        dangerous_exact = {
+            "core.fsmonitor",
+            "core.sshcommand",
+            "core.hookspath",
+            "core.pager",
+            "core.worktree",
+            "core.editor",
+            "sequence.editor",
+            "diff.external",
+            "credential.helper",
+            "uploadpack.packobjectshook",
+            "protocol.ext.allow",
+        }
+        section = ""
+        for raw_line in config_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith(("#", ";")):
+                continue
+            if line.startswith("["):
+                section = line.strip("[]").split(None, 1)[0].strip('"').lower()
+                if section.startswith(("include", "includeif", "filter")):
+                    raise GitError(f"refusing dangerous workspace git section: {section}")
+                continue
+            if "=" not in line:
+                continue
+            key = line.split("=", 1)[0].strip().lower()
+            full_key = f"{section}.{key}" if section else key
+            if full_key in dangerous_exact:
+                raise GitError(f"refusing dangerous workspace git config: {full_key}")
 
     def _reject_dangerous_hooks(self, repo_path: str | Path) -> None:
         """Reject executable non-sample hooks in an untrusted workspace."""
