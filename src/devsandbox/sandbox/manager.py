@@ -31,6 +31,8 @@ import docker
 from docker.errors import APIError, ImageNotFound, NotFound  # type: ignore[import-not-found]
 from requests.exceptions import (  # type: ignore[import-untyped]
     ConnectionError as RequestsConnectionError,
+)
+from requests.exceptions import (
     ReadTimeout,
 )
 
@@ -121,12 +123,25 @@ class DockerSandboxManager:
         exit_code: int | None = None
         peak_memory_mb: int | None = None
 
+        # Attach before starting so early output is never lost and the socket
+        # signals EOF when the container exits.  Attaching after
+        # ``containers.run(detach=True)`` races with fast containers and can
+        # leave the socket open forever.
+        log_socket = await asyncio.to_thread(self._attach_logs_socket, container)
+        try:
+            await asyncio.to_thread(container.start)
+        except Exception as exc:
+            with contextlib.suppress(Exception):
+                log_socket.close()
+            await asyncio.to_thread(self._remove_container_ignoring_errors, container)
+            raise SandboxError(f"failed to start container for {req.attempt_id}: {exc}") from exc
+
         stop_sampling = threading.Event()
         peak_usage: list[int] = [0]
         stream_task = asyncio.create_task(
             asyncio.to_thread(
                 self._stream_logs,
-                container,
+                log_socket,
                 stdout_path,
                 stderr_path,
                 self._log_cap_bytes,
@@ -147,9 +162,7 @@ class DockerSandboxManager:
                 # docker-py raises ``requests.ConnectionError`` wrapping a read
                 # timeout on some daemon/transport versions.  Re-raise real
                 # connection failures instead of misreporting them as timeouts.
-                if isinstance(exc, RequestsConnectionError) and "timed out" not in str(
-                    exc
-                ).lower():
+                if isinstance(exc, RequestsConnectionError) and "timed out" not in str(exc).lower():
                     raise
                 timed_out = True
                 await asyncio.to_thread(container.kill, signal="SIGTERM")
@@ -219,9 +232,14 @@ class DockerSandboxManager:
 
         kwargs = self._build_container_kwargs(req, network, resources)
         try:
-            return self._client.containers.run(**kwargs)
+            return self._client.containers.create(**kwargs)
         except APIError as exc:
-            raise SandboxError(f"failed to start container for {req.attempt_id}: {exc}") from exc
+            raise SandboxError(f"failed to create container for {req.attempt_id}: {exc}") from exc
+
+    @staticmethod
+    def _attach_logs_socket(container: Any) -> Any:
+        """Attach to a *created but not started* container's output stream."""
+        return container.attach_socket(params={"stdout": 1, "stderr": 1, "stream": 1})
 
     def _build_container_kwargs(
         self, req: SandboxRequest, network: NetworkPolicy, resources: ResourceProfile
@@ -270,7 +288,6 @@ class DockerSandboxManager:
             "nano_cpus": int(resources.cpu_cores * 1_000_000_000),
             "pids_limit": resources.pids_limit,
             "working_dir": "/workspace",
-            "detach": True,
         }
         if network.mode == "none":
             kwargs["network_mode"] = "none"
@@ -282,17 +299,16 @@ class DockerSandboxManager:
 
     def _stream_logs(
         self,
-        container: Any,
+        sock: Any,
         stdout_path: Path,
         stderr_path: Path,
         cap_bytes: int,
     ) -> None:
-        """Demux the container's attach socket into the two log files.
+        """Demux an attached container socket into the two log files.
 
         Output is passed through :func:`redact` and each file is capped at
         ``cap_bytes`` with a truncation marker.
         """
-        sock = container.attach_socket(params={"stdout": 1, "stderr": 1, "stream": 1})
         stdout_written = 0
         stderr_written = 0
         try:
@@ -325,7 +341,10 @@ class DockerSandboxManager:
         chunks: list[bytes] = []
         remaining = size
         while remaining > 0:
-            chunk = sock.recv(remaining)
+            # docker-py returns a ``socket.SocketIO`` (an ``io.RawIOBase``)
+            # rather than a raw socket on some SDK versions; support both.
+            recv = getattr(sock, "recv", None)
+            chunk = recv(remaining) if callable(recv) else sock.read(remaining)
             if not chunk:
                 break
             chunks.append(chunk)

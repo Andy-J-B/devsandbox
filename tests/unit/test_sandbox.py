@@ -112,6 +112,12 @@ class FakeContainers:
         self._containers[container.id] = container
         return container
 
+    def create(self, **kwargs: Any) -> FakeContainer:
+        self.run_kwargs.append(kwargs)
+        container = FakeContainer(kwargs.get("name", "container-1"))
+        self._containers[container.id] = container
+        return container
+
     def list(
         self,
         filters: dict[str, Any] | None = None,
@@ -298,19 +304,19 @@ def test_run_treats_requests_read_timeout_as_sandbox_timeout() -> None:
     import asyncio
 
     async def run_with_fake_container() -> Any:
-        # Make containers.run return our timeout container.
-        original_run = client.containers.run
+        # Make containers.create return our timeout container.
+        original_create = client.containers.create
 
-        def run(**kwargs: Any) -> _ReadTimeoutContainer:
+        def create(**kwargs: Any) -> _ReadTimeoutContainer:
             client.containers.run_kwargs.append(kwargs)
             client.containers._containers[container.id] = container
             return container
 
-        client.containers.run = run  # type: ignore[method-assign]
+        client.containers.create = create  # type: ignore[method-assign]
         try:
             return await manager.run(req)
         finally:
-            client.containers.run = original_run  # type: ignore[method-assign]
+            client.containers.create = original_create  # type: ignore[method-assign]
 
     result = asyncio.run(run_with_fake_container())
 
@@ -420,7 +426,8 @@ def test_stream_logs_redacts_and_demuxes(monkeypatch: pytest.MonkeyPatch, tmp_pa
         (1, b"stdout data sk-1234567890abcdef\n"),
         (2, b"stderr data\n"),
     ]
-    container.attach_socket = lambda params: FakeSocket(frames)  # type: ignore[method-assign]
+    sock = FakeSocket(frames)
+    container.attach_socket = lambda params: sock  # type: ignore[method-assign]
 
     import devsandbox.sandbox.manager as manager_module
 
@@ -434,7 +441,7 @@ def test_stream_logs_redacts_and_demuxes(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.setattr(manager_module, "redact", spy)
     try:
         manager._stream_logs(
-            container,
+            sock,
             tmp_path / "stdout.log",
             tmp_path / "stderr.log",
             cap_bytes=1024,

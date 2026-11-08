@@ -175,10 +175,11 @@ async def test_run_idempotent_same_attempt_id(tmp_path: Path) -> None:
     finally:
         await asyncio.to_thread(manager.destroy, result2.container_id)
 
-    assert result1.container_id == result2.container_id
+    assert result1.container_id != result2.container_id  # replaced, not reused
     managed = await manager.list_managed()
     attempts = [c for c in managed if c.labels.get("devsandbox.attempt") == "attempt-1"]
     assert len(attempts) == 1
+    assert attempts[0].container_id == result2.container_id
 
 
 @pytest.mark.asyncio
