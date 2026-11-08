@@ -70,6 +70,7 @@ test).
 
 | Suite | Command | Result |
 |---|---|---|
+| Whole repository (default env) | `python3 -m pytest -q` | **571 passed**, 39 skipped (66.6 s); Docker/PostgreSQL integration tests included, E2E/security Docker gates skipped by design |
 | Unit + contract + lint/types | `scripts/check.sh` | ruff/format clean, mypy strict clean, **435 passed**, 175 deselected (29.5 s) |
 | E2E E1–E7, E9–E15 — run 1 | `DEVSANDBOX_E2E=1 pytest -q tests/e2e/test_e2e_core.py tests/e2e/test_e2e_retries_autonomy.py tests/e2e/test_e2e_crash_soak.py -k "not soak"` | **16 passed**, 4 deselected (130.9 s) |
 | E2E E1–E7, E9–E15 — run 2 | same | **16 passed**, 4 deselected (128.8 s) |
