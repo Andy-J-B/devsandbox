@@ -52,7 +52,7 @@ class RetriesConfig(BaseModel):
 class SecurityConfig(BaseModel):
     """Security posture (never sourced from the project spec)."""
 
-    allow_network_default: bool = True
+    allow_network_default: bool = False
     allow_push: bool = False
     allow_main_merge: bool = False
     allow_autonomous_mode: bool = True

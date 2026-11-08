@@ -418,6 +418,20 @@ def test_write_to_cap_truncates_with_marker() -> None:
     assert bytes(buf) == b"hello" + _TRUNCATION_MARKER
 
 
+def test_write_to_cap_marks_exact_fill_and_stops_writing() -> None:
+    from devsandbox.sandbox.manager import DockerSandboxManager
+
+    buf = bytearray()
+    fake_file = type("F", (), {"write": lambda self, b: buf.extend(b)})()
+    written = DockerSandboxManager._write_to_cap(fake_file, b"hello", 0, 5)
+    assert written == 5
+    assert bytes(buf) == b"hello" + _TRUNCATION_MARKER
+
+    written = DockerSandboxManager._write_to_cap(fake_file, b"more", written, 5)
+    assert written == 5
+    assert bytes(buf) == b"hello" + _TRUNCATION_MARKER
+
+
 def test_stream_logs_redacts_and_demuxes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     manager = _make_manager()
     container = FakeContainer()

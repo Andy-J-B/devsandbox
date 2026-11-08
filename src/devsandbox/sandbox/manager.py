@@ -357,7 +357,7 @@ class DockerSandboxManager:
         if already_written >= cap_bytes:
             return already_written
         remaining = cap_bytes - already_written
-        if len(data) > remaining:
+        if len(data) >= remaining:
             file.write(data[:remaining])
             file.write(_TRUNCATION_MARKER)
             return cap_bytes
