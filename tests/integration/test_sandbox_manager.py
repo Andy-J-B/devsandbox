@@ -6,7 +6,6 @@ the isolation, resource, timeout, and OOM behaviour of :class:`DockerSandboxMana
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import docker
@@ -73,7 +72,7 @@ async def test_run_echo_captures_logs(tmp_path: Path) -> None:
     try:
         result = await manager.run(req)
     finally:
-        await asyncio.to_thread(manager.destroy, result.container_id)
+        await manager.destroy(result.container_id)
 
     assert result.exit_code == 0
     assert result.timed_out is False
@@ -90,7 +89,7 @@ async def test_run_timeout_kills_container(tmp_path: Path) -> None:
     try:
         result = await manager.run(req)
     finally:
-        await asyncio.to_thread(manager.destroy, result.container_id)
+        await manager.destroy(result.container_id)
 
     assert result.timed_out is True
     # Container must not be left running.
@@ -111,7 +110,7 @@ async def test_run_oom_killed(tmp_path: Path) -> None:
     try:
         result = await manager.run(req)
     finally:
-        await asyncio.to_thread(manager.destroy, result.container_id)
+        await manager.destroy(result.container_id)
 
     assert result.oom_killed is True
 
@@ -129,7 +128,7 @@ async def test_run_network_none_blocks_egress(tmp_path: Path) -> None:
     try:
         result = await manager.run(req)
     finally:
-        await asyncio.to_thread(manager.destroy, result.container_id)
+        await manager.destroy(result.container_id)
 
     assert result.exit_code != 0
 
@@ -153,7 +152,7 @@ async def test_run_isolation_no_host_access(tmp_path: Path) -> None:
     try:
         result = await manager.run(req)
     finally:
-        await asyncio.to_thread(manager.destroy, result.container_id)
+        await manager.destroy(result.container_id)
 
     assert result.exit_code == 0
     stdout = result.stdout_path.read_text()
@@ -172,14 +171,14 @@ async def test_run_idempotent_same_attempt_id(tmp_path: Path) -> None:
         # Simulate a crash: container left in place.  Run again with the same
         # attempt id; it must be replaced, not duplicated.
         result2 = await manager.run(req)
-    finally:
-        await asyncio.to_thread(manager.destroy, result2.container_id)
 
-    assert result1.container_id != result2.container_id  # replaced, not reused
-    managed = await manager.list_managed()
-    attempts = [c for c in managed if c.labels.get("devsandbox.attempt") == "attempt-1"]
-    assert len(attempts) == 1
-    assert attempts[0].container_id == result2.container_id
+        assert result1.container_id != result2.container_id  # replaced, not reused
+        managed = await manager.list_managed()
+        attempts = [c for c in managed if c.labels.get("devsandbox.attempt") == "attempt-1"]
+        assert len(attempts) == 1
+        assert attempts[0].container_id == result2.container_id
+    finally:
+        await manager.destroy(result2.container_id)
 
 
 @pytest.mark.asyncio
