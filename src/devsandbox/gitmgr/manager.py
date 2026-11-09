@@ -618,7 +618,6 @@ class GitManagerImpl:
             # Import a non-git directory as an initial commit on main.
             with tempfile.TemporaryDirectory(prefix="devsandbox-import-") as tmp:
                 tmp_path = Path(tmp)
-                # Explicitly set the initial branch name to match ref (e.g., "main")
                 await run_git(["init", "-b", ref], cwd=tmp_path)
                 for item in source_path.iterdir():
                     dest = tmp_path / item.name
