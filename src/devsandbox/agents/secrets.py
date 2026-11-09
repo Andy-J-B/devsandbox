@@ -36,7 +36,7 @@ _PROVIDER_SECRET_ENV: dict[str, str] = {
     "deepseek": "DEEPSEEK_API_KEY",
     "mistral": "MISTRAL_API_KEY",
     "xai": "XAI_API_KEY",
-    "opencode": MODEL_API_KEY_ENV,
+    "opencode": "OPENCODE_API_KEY",
 }
 
 

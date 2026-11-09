@@ -45,10 +45,22 @@ RUN npm install -g --no-fund --no-audit "opencode-ai@${OPENCODE_VERSION}" \
         || test "$(opencode --version)" = "v${OPENCODE_VERSION}") \
     && npm cache clean --force
 
-# Non-root agent user (uid 1000) with a writable home and workspace.
-RUN useradd --uid 1000 --create-home --shell /bin/bash agent \
-    && mkdir -p /workspace /opt/devsandbox /home/agent/.local/share/opencode \
-    && chown -R agent:agent /workspace /home/agent
+# Non-root agent user (uid 1000) with a writable home and workspace.  Recent
+# node:* images already ship a uid/gid 1000 account ("node"), so rename it
+# rather than failing on a duplicate id.
+RUN set -eux; \
+    if getent passwd 1000 >/dev/null; then \
+        current_user="$(getent passwd 1000 | cut -d: -f1)"; \
+        current_group="$(getent group 1000 | cut -d: -f1)"; \
+        usermod --login agent --home /home/agent "$current_user"; \
+        if [ -n "$current_group" ] && [ "$current_group" != agent ]; then \
+            groupmod --new-name agent "$current_group"; \
+        fi; \
+    else \
+        useradd --uid 1000 --create-home --shell /bin/bash agent; \
+    fi; \
+    mkdir -p /workspace /opt/devsandbox /home/agent/.local/share/opencode; \
+    chown -R agent:agent /workspace /home/agent
 
 # Baseline config lives outside $HOME so it is not masked by the sandbox
 # manager's tmpfs mount.  The adapter adds per-attempt overrides through

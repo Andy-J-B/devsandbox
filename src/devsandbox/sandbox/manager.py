@@ -254,8 +254,10 @@ class DockerSandboxManager:
             environment[name] = secret.get_secret_value()
 
         tmpfs: dict[str, str] = {
-            "/tmp": "",
-            "/home/agent": "",
+            "/tmp": "rw,mode=1777",
+            # OpenCode writes config/cache under $HOME; make it owned by the
+            # non-root agent uid instead of the tmpfs default (root:root).
+            "/home/agent": "rw,uid=1000,gid=1000,mode=0700",
         }
 
         labels: dict[str, str] = {

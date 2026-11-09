@@ -226,6 +226,10 @@ class DevSandboxSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="DEVSANDBOX_",
         env_file=(".env", "devsandbox.toml"),
+        # Only load prefixed keys from dotenv files.  A developer's .env often
+        # contains unrelated provider credentials (for example
+        # OPENCODE_API_KEY); those must never become settings inputs.
+        dotenv_filtering="match_prefix",
         case_sensitive=False,
         extra="forbid",
     )

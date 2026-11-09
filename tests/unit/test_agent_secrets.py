@@ -84,6 +84,7 @@ def test_secret_env_for_model_passes_only_named_secret(
 
 def test_unknown_provider_uses_generic_key_env() -> None:
     assert provider_secret_env("openrouter") == "OPENROUTER_API_KEY"
+    assert provider_secret_env("opencode") == "OPENCODE_API_KEY"
     assert provider_secret_env("some-custom-endpoint") == MODEL_API_KEY_ENV
 
 

@@ -211,8 +211,8 @@ def test_build_container_kwargs_enforces_isolation() -> None:
     assert "no-new-privileges" in kwargs["security_opt"]
     assert kwargs["user"] == "1000"
     assert kwargs["read_only"] is True
-    assert "/tmp" in kwargs["tmpfs"]
-    assert "/home/agent" in kwargs["tmpfs"]
+    assert kwargs["tmpfs"]["/tmp"] == "rw,mode=1777"
+    assert kwargs["tmpfs"]["/home/agent"] == "rw,uid=1000,gid=1000,mode=0700"
 
     # Resource limits.
     assert kwargs["mem_limit"] == "512m"

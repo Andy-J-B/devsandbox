@@ -6,11 +6,15 @@ Run with::
 
 For the live free-model task, also set ``DEVSANDBOX_OPENCODE_LIVE=1`` plus
 ``DEVSANDBOX_OPENCODE_PROVIDER``, ``DEVSANDBOX_OPENCODE_MODEL``, and
-optionally ``DEVSANDBOX_OPENCODE_API_KEY``.
+optionally ``DEVSANDBOX_OPENCODE_API_KEY`` / ``DEVSANDBOX_OPENCODE_BASE_URL``.
+The live run defaults to ``network=full`` because a hosted model is
+unreachable from the default ``network=none`` sandbox; override with
+``DEVSANDBOX_OPENCODE_NETWORK``.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -119,11 +123,11 @@ def test_live_free_model_small_task(agent_image: str, tmp_path) -> None:
     from tests.agent_helpers import make_request, make_settings, make_workspace
 
     from devsandbox.agents.opencode import OpenCodeAdapter
-    from devsandbox.common.types import ModelConfig
+    from devsandbox.common.types import ModelConfig, NetworkPolicy, TaskSpec
     from devsandbox.config.settings import SecretRef
     from devsandbox.sandbox.manager import DockerSandboxManager
 
-    provider = os.environ.get("DEVSANDBOX_OPENCODE_PROVIDER", "openrouter")
+    provider = os.environ.get("DEVSANDBOX_OPENCODE_PROVIDER", "opencode")
     model_id = os.environ.get("DEVSANDBOX_OPENCODE_MODEL")
     if not model_id:
         pytest.skip("DEVSANDBOX_OPENCODE_MODEL is required for the live test")
@@ -133,13 +137,62 @@ def test_live_free_model_small_task(agent_image: str, tmp_path) -> None:
         secret_ref = "model"
     else:
         secret_ref = None
-    model = ModelConfig(provider=provider, model=model_id, secret_ref=secret_ref)
-    workspace, _ = make_workspace(tmp_path / "live", initialise_git=True)
+    model = ModelConfig(
+        provider=provider,
+        model=model_id,
+        base_url=os.environ.get("DEVSANDBOX_OPENCODE_BASE_URL") or None,
+        secret_ref=secret_ref,
+    )
+    network = NetworkPolicy(mode=os.environ.get("DEVSANDBOX_OPENCODE_NETWORK", "full"))
+    task = TaskSpec(
+        id="live-smoke",
+        title="Create a greeting file",
+        description="Create a file named hello.txt in the repository root.",
+        instructions=(
+            "Write exactly 'hello from devsandbox' followed by a newline to "
+            "hello.txt, then commit the change with git."
+        ),
+        success_criteria=["hello.txt exists and contains the greeting"],
+        expected_files=["hello.txt"],
+    )
+    workspace, workspace_path = make_workspace(tmp_path / "live", initialise_git=True)
     sandbox = DockerSandboxManager(settings, data_root=tmp_path / "data")
     adapter = OpenCodeAdapter(sandbox, settings, image=agent_image)
 
     import asyncio
 
-    result = asyncio.run(adapter.run(make_request(workspace, model=model)))
+    result = asyncio.run(
+        adapter.run(
+            make_request(
+                workspace,
+                task=task,
+                model=model,
+                network=network,
+                timeout_seconds=300,
+            )
+        )
+    )
+    usage = result.token_usage
+    record = {
+        "provider": provider,
+        "model": model_id,
+        "base_url": model.base_url,
+        "network": network.mode,
+        "exit_status": result.exit_status,
+        "exit_code": result.exit_code,
+        "input_tokens": usage.input_tokens if usage else None,
+        "output_tokens": usage.output_tokens if usage else None,
+        "total_tokens": usage.total_tokens if usage else None,
+        "cost_usd": 0.0,
+        "duration_seconds": round(result.duration_seconds or 0.0, 2),
+        "log_path": str(result.log_path) if result.log_path else None,
+    }
+    print("LIVE_OPENCODE_SMOKE=" + json.dumps(record, sort_keys=True))
+
     assert result.log_path is not None
-    assert result.exit_status in {"exited_ok", "exited_error", "timeout", "oom", "crashed"}
+    assert result.exit_status == "exited_ok", result.summary
+    assert (workspace_path / "hello.txt").read_text(encoding="utf-8").strip() == (
+        "hello from devsandbox"
+    )
+    assert usage is not None
+    assert usage.total_tokens > 0
