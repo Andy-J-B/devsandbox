@@ -117,9 +117,7 @@ def _infra_budget_guard(context: TransitionContext) -> bool:
 
 
 # Guards keyed by exact edge.  Absent edges are unguarded.
-TASK_GUARDS: dict[
-    tuple[TaskStatus, TaskStatus], Callable[[TransitionContext], bool]
-] = {
+TASK_GUARDS: dict[tuple[TaskStatus, TaskStatus], Callable[[TransitionContext], bool]] = {
     (TaskStatus.RUNNING, TaskStatus.RETRY_WAIT): _retry_budget_guard,
     (TaskStatus.VALIDATING, TaskStatus.RETRY_WAIT): _retry_budget_guard,
     (TaskStatus.INTEGRATING, TaskStatus.RETRY_WAIT): _retry_budget_guard,
@@ -150,9 +148,7 @@ def can_transition(
     context: TransitionContext | None = None,
 ) -> bool:
     """Return whether an edge is both legal and allowed by its guard."""
-    return is_legal(from_state, to_state) and guard_allows(
-        from_state, to_state, context
-    )
+    return is_legal(from_state, to_state) and guard_allows(from_state, to_state, context)
 
 
 def assert_transition(
@@ -162,9 +158,7 @@ def assert_transition(
 ) -> None:
     """Raise :class:`InvalidTransition` when an edge may not be taken."""
     if not is_legal(from_state, to_state):
-        raise InvalidTransition(
-            f"illegal task transition {from_state.value} -> {to_state.value}"
-        )
+        raise InvalidTransition(f"illegal task transition {from_state.value} -> {to_state.value}")
     if not guard_allows(from_state, to_state, context):
         raise InvalidTransition(
             f"guard rejected task transition {from_state.value} -> {to_state.value}"
