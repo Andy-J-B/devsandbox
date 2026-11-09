@@ -47,7 +47,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 norecursedirs = ["tests/fixtures"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 markers = [
     "unit: fast tests with fakes and no external services",
     "integration: tests that use PostgreSQL and/or the real local modules",
