@@ -726,10 +726,7 @@ class GitManagerImpl:
         # Record the candidate commit in the bare repo so the object exists
         # there before the CAS update-ref in commit_integration.
         integration_ref = f"{_INTEGRATION_REF_PREFIX}/{attempt_id}"
-        await run_git(
-            ["fetch", str(worktree_path), f"{staging_after}:{integration_ref}"],
-            cwd=repo.path,
-        )
+        await run_git(["update-ref", integration_ref, staging_after], cwd=repo.path)
 
         return IntegrationCandidate(
             attempt_id=attempt_id,
@@ -741,21 +738,17 @@ class GitManagerImpl:
             integration_ref=integration_ref,
         )
 
+    async def _conflicting_files(self, worktree_path: Path) -> list[str]:
+        res = await run_git(["diff", "--name-only", "--diff-filter=U"], cwd=worktree_path)
+        return [line.strip() for line in res.stdout.splitlines() if line.strip()]
+
     async def _drop_candidate_ref(self, repo: RepoHandle, integration_ref: str) -> None:
-        if not integration_ref:
-            return
-        with contextlib.suppress(GitCommandError):
-            await run_git(["update-ref", "-d", integration_ref], cwd=repo.path)
+        if integration_ref:
+            with contextlib.suppress(GitCommandError):
+                await run_git(["update-ref", "-d", integration_ref], cwd=repo.path)
 
     async def _remove_integration_dir(self, project_id: str) -> None:
         integration_dir = self._integration_dir(project_id)
         if integration_dir.is_dir():
-            shutil.rmtree(integration_dir, ignore_errors=True)
-
-    async def _conflicting_files(self, worktree_path: str | Path) -> list[str]:
-        """Return files in conflict state after a failed merge."""
-        try:
-            res = await run_git(["diff", "--name-only", "--diff-filter=U"], cwd=worktree_path)
-            return [line for line in res.stdout.splitlines() if line.strip()]
-        except Exception:  # pragma: no cover - best effort
-            return []
+            with contextlib.suppress(OSError):
+                shutil.rmtree(integration_dir)
