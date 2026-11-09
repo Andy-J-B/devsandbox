@@ -63,6 +63,7 @@ markers = [
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+exclude = ["docs/*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
