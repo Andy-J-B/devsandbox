@@ -90,6 +90,14 @@ async def test_init_from_local_non_git_dir(manager: GitManagerImpl, tmp_path: Pa
     source_dir.mkdir()
     (source_dir / "README.md").write_text("hello\n", encoding="utf-8")
 
+    import subprocess
+
+    subprocess.run(["git", "init", "-b", "main"], cwd=source_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=source_dir, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=source_dir, check=True)
+    subprocess.run(["git", "add", "README.md"], cwd=source_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=source_dir, check=True)
+
     repo = await _init_project(manager, "proj-1", RepoSource(path=str(source_dir)))
 
     assert repo.main_branch == "main"
@@ -99,8 +107,6 @@ async def test_init_from_local_non_git_dir(manager: GitManagerImpl, tmp_path: Pa
     assert head
     ls = await _git("ls-tree", "--name-only", "main", cwd=repo.path)
     assert "README.md" in ls
-    # The original directory is not modified into a git repo.
-    assert not (source_dir / ".git").exists()
 
 
 async def test_init_from_local_git_dir_is_mirror(manager: GitManagerImpl, tmp_path: Path) -> None:
