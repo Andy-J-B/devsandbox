@@ -117,7 +117,9 @@ def _infra_budget_guard(context: TransitionContext) -> bool:
 
 
 # Guards keyed by exact edge.  Absent edges are unguarded.
-TASK_GUARDS: dict[tuple[TaskStatus, TaskStatus], Callable[[TransitionContext], bool]] = {
+TASK_GUARDS: dict[
+    tuple[TaskStatus, TaskStatus], Callable[[TransitionContext], bool]
+] = {
     (TaskStatus.RUNNING, TaskStatus.RETRY_WAIT): _retry_budget_guard,
     (TaskStatus.VALIDATING, TaskStatus.RETRY_WAIT): _retry_budget_guard,
     (TaskStatus.INTEGRATING, TaskStatus.RETRY_WAIT): _retry_budget_guard,
@@ -148,7 +150,9 @@ def can_transition(
     context: TransitionContext | None = None,
 ) -> bool:
     """Return whether an edge is both legal and allowed by its guard."""
-    return is_legal(from_state, to_state) and guard_allows(from_state, to_state, context)
+    return is_legal(from_state, to_state) and guard_allows(
+        from_state, to_state, context
+    )
 
 
 def assert_transition(
@@ -158,7 +162,9 @@ def assert_transition(
 ) -> None:
     """Raise :class:`InvalidTransition` when an edge may not be taken."""
     if not is_legal(from_state, to_state):
-        raise InvalidTransition(f"illegal task transition {from_state.value} -> {to_state.value}")
+        raise InvalidTransition(
+            f"illegal task transition {from_state.value} -> {to_state.value}"
+        )
     if not guard_allows(from_state, to_state, context):
         raise InvalidTransition(
             f"guard rejected task transition {from_state.value} -> {to_state.value}"
@@ -259,22 +265,31 @@ def derive_project_status(
 ) -> ProjectStatus:
     """Derive a terminal/executing project status from its tasks.
 
-    Accepts task rows, ``TaskStatus`` values, or any object with a ``status``
-    attribute (ORM rows included).  Paused/cancelled project states are an
-    orchestration decision and are not derived here.
+        Accepts task rows, ``TaskStatus`` values, or any object with a ``status``
+        attribute (ORM rows included).  Paused/cancelled project states are an
+        orchestration decision and are not derived here.
 
-    Rules (documented in ``docs/orchestrator.md``):
+        Rules (documented in ``docs/orchestrator.md``):
 
-    * no tasks -> ``COMPLETED`` (vacuously done)
-    * any non-terminal task -> ``EXECUTING``
-    * otherwise any FAILED/BLOCKED -> ``FAILED``
-    * otherwise any CANCELLED -> ``CANCELLED``
-    * otherwise -> ``COMPLETED``
+    - no tasks -> ``COMPLETED`` (vacuously done)
+    - any non-terminal task -> ``EXECUTING``
+    - otherwise any FAILED/BLOCKED -> ``FAILED``
+    - otherwise any CANCELLED -> ``CANCELLED``
+    - otherwise -> ``COMPLETED``
     """
     statuses: list[TaskStatus] = []
     for task in tasks:
-        status = task if isinstance(task, TaskStatus) else getattr(task, "status", task)
-        statuses.append(status if isinstance(status, TaskStatus) else TaskStatus(str(status)))
+        if isinstance(task, TaskStatus):
+            status = task
+        else:
+            raw_status = getattr(task, "status", None)
+            if isinstance(raw_status, TaskStatus):
+                status = raw_status
+            elif raw_status is not None:
+                status = TaskStatus(str(raw_status))
+            else:
+                status = TaskStatus(str(task))
+        statuses.append(status)
 
     if not statuses:
         return ProjectStatus.COMPLETED
