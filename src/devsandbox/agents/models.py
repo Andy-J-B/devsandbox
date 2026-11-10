@@ -153,6 +153,35 @@ class UsageLimiter:
         return utcnow().date().isoformat()
 
 
+def model_config_from_settings(settings: DevSandboxSettings) -> ModelConfig:
+    """Build the per-run :class:`ModelConfig` from settings.
+
+    ``agent.default_model`` may be a bare model id or a ``provider/model``
+    reference.  A leading provider segment is split off when no explicit
+    ``agent.default_provider`` is configured, so the documented
+    ``ollama/qwen3:8b`` form works without extra settings.
+    """
+    agent = settings.agent
+    provider = agent.default_provider
+    model_id = agent.default_model
+    if model_id and "/" in model_id:
+        prefix, remainder = model_id.split("/", 1)
+        if provider is None:
+            provider = prefix
+            model_id = remainder
+        elif provider == prefix:
+            model_id = remainder
+    return ModelConfig(
+        name=agent.default_model or "opencode",
+        provider=provider,
+        model=model_id,
+        base_url=agent.base_url,
+        secret_ref=agent.secret_ref,
+        max_tokens=agent.model_budget.max_tokens,
+        max_requests=agent.model_budget.max_requests,
+    )
+
+
 def _total_tokens(token_usage: TokenUsage | None) -> int:
     if token_usage is None:
         return 0
@@ -168,4 +197,5 @@ __all__ = [
     "UsageRead",
     "UsageRecord",
     "UsageSnapshot",
+    "model_config_from_settings",
 ]

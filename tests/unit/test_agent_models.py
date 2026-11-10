@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from tests.agent_helpers import make_settings
 
-from devsandbox.agents.models import UsageLimiter, UsageSnapshot
+from devsandbox.agents.models import UsageLimiter, UsageSnapshot, model_config_from_settings
 from devsandbox.common.errors import BudgetExceeded
 from devsandbox.common.types import ModelConfig, TokenUsage
 
@@ -51,6 +51,47 @@ def test_snapshot_and_remaining() -> None:
     snapshot = limiter.snapshot("p1", MODEL)
     assert snapshot == UsageSnapshot(tokens=150, requests=1)
     assert limiter.remaining("p1", MODEL) == (850, 4)
+
+
+def test_model_config_parses_provider_prefix() -> None:
+    settings = make_settings()
+    settings = settings.model_copy(
+        update={
+            "agent": settings.agent.model_copy(
+                update={"default_model": "ollama/qwen3:8b", "base_url": "http://host:11434/v1"}
+            )
+        }
+    )
+    model = model_config_from_settings(settings)
+    assert model.provider == "ollama"
+    assert model.model == "qwen3:8b"
+    assert model.reference == "ollama/qwen3:8b"
+    assert model.base_url == "http://host:11434/v1"
+
+
+def test_model_config_accepts_explicit_provider_and_bare_model() -> None:
+    settings = make_settings()
+    settings = settings.model_copy(
+        update={
+            "agent": settings.agent.model_copy(
+                update={"default_provider": "openrouter", "default_model": "qwen3:8b"}
+            )
+        }
+    )
+    model = model_config_from_settings(settings)
+    assert model.model_id == "qwen3:8b"
+    assert model.provider == "openrouter"
+
+
+def test_model_config_keeps_model_only() -> None:
+    settings = make_settings()
+    settings = settings.model_copy(
+        update={"agent": settings.agent.model_copy(update={"default_model": "qwen3:8b"})}
+    )
+    model = model_config_from_settings(settings)
+    assert model.provider is None
+    assert model.model_id == "qwen3:8b"
+    assert model.reference == "opencode/qwen3:8b"
 
 
 def test_injected_store_and_cost_recorder_are_used() -> None:

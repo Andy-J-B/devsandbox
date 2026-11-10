@@ -67,10 +67,21 @@ class ModelBudget(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    """Default agent runtime / model configuration."""
+    """Default agent runtime / model configuration.
+
+    ``default_model`` accepts either a bare model id (``qwen3:8b``) or a
+    ``provider/model`` reference (``ollama/qwen3:8b``).  ``default_provider``
+    can be set explicitly when the model id itself contains a slash.
+    ``base_url`` and ``secret_ref`` configure OpenAI-compatible endpoints and
+    the host secret that holds the provider key; the value itself never leaves
+    the host.
+    """
 
     default_runtime: str = "opencode"
+    default_provider: str | None = None
     default_model: str | None = None
+    base_url: str | None = None
+    secret_ref: str | None = None
     model_budget: ModelBudget = Field(default_factory=ModelBudget)
 
 

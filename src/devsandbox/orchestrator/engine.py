@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..agents.interfaces import AgentAdapter, AgentRunRequest, AgentRunResult
+from ..agents.models import model_config_from_settings
 from ..common.errors import (
     InvalidTransition,
     OrchestratorAlreadyRunning,
@@ -27,7 +28,6 @@ from ..common.logging import get_logger
 from ..common.time import utcnow
 from ..common.types import (
     CheckSpec,
-    ModelConfig,
     NetworkPolicy,
     ProjectMode,
     ProjectStatus,
@@ -1760,12 +1760,7 @@ class OrchestratorEngine:
         timeout = self.policy.effective_timeout(task.timeout_seconds)
         if timeout != task.timeout_seconds:
             denied.append(f"timeout request {task.timeout_seconds}s exceeded policy {timeout}s")
-        model = ModelConfig(
-            name=self.settings.agent.default_model or "opencode",
-            model=self.settings.agent.default_model,
-            max_tokens=self.settings.agent.model_budget.max_tokens,
-            max_requests=self.settings.agent.model_budget.max_requests,
-        )
+        model = model_config_from_settings(self.settings)
         request = AgentRunRequest(
             task=spec,
             context_bundle=bundle,
