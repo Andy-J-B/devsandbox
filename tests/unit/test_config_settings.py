@@ -23,3 +23,15 @@ def test_dotenv_ignores_unprefixed_provider_keys(
     settings = DevSandboxSettings()
 
     assert settings.data_root == "/tmp/devsandbox-test-root"
+
+
+def test_nested_env_uses_double_underscore(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVSANDBOX_API__PORT", "8123")
+    monkeypatch.setenv("DEVSANDBOX_AGENT__DEFAULT_MODEL", "ollama/qwen3:8b")
+    monkeypatch.setenv("DEVSANDBOX_SECURITY__ALLOW_NETWORK_DEFAULT", "true")
+
+    settings = DevSandboxSettings(_env_file=None)
+
+    assert settings.api.port == 8123
+    assert settings.agent.default_model == "ollama/qwen3:8b"
+    assert settings.security.allow_network_default is True

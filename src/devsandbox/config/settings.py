@@ -241,6 +241,9 @@ class DevSandboxSettings(BaseSettings):
         # contains unrelated provider credentials (for example
         # OPENCODE_API_KEY); those must never become settings inputs.
         dotenv_filtering="match_prefix",
+        # Nested settings use ``DEVSANDBOX_<SECTION>__<FIELD>`` (for example
+        # ``DEVSANDBOX_API__PORT`` and ``DEVSANDBOX_AGENT__DEFAULT_MODEL``).
+        env_nested_delimiter="__",
         case_sensitive=False,
         extra="forbid",
     )
