@@ -90,7 +90,15 @@ def render_opencode_config(model: ModelConfig, network: NetworkPolicy) -> dict[s
             "npm": "@ai-sdk/openai-compatible",
             "name": provider,
             "options": {"baseURL": model.base_url},
-            "models": {model_id: {"name": model_id}},
+            "models": {
+                model_id: {
+                    "name": model_id,
+                    # Custom OpenAI-compatible providers are not in models.dev;
+                    # without this flag OpenCode never advertises tools and
+                    # models answer with tool-call JSON as plain text.
+                    "tool_call": True,
+                }
+            },
         }
         if model.secret_ref:
             provider_config["options"]["apiKey"] = "{env:" + provider_secret_env(provider) + "}"

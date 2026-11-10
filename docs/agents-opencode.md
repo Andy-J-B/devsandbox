@@ -96,11 +96,15 @@ Keys used:
         "baseURL": "http://host:port/v1",
         "apiKey": "{env:DEVSANDBOX_MODEL_API_KEY}"
       },
-      "models": {"model-id": {"name": "model-id"}}
+      "models": {"model-id": {"name": "model-id", "tool_call": true}}
     }
   }
 }
 ```
+
+`tool_call: true` is required for custom OpenAI-compatible endpoints. They are
+not listed in models.dev, so without it OpenCode never advertises tools and an
+otherwise tool-capable model answers with tool-call JSON as plain text.
 
 No secret value is ever written to the config: the key is referenced as
 `{env:NAME}` and the value is injected through `SandboxRequest.secret_env`.
@@ -140,7 +144,7 @@ change set independently.
 ### Option A — local Ollama (fully free, no API key)
 
 ```bash
-ollama pull qwen2.5-coder:7b
+ollama pull qwen3:8b
 OLLAMA_HOST=0.0.0.0:11434 ollama serve
 ```
 
@@ -148,7 +152,7 @@ In the project spec / orchestrator model config:
 
 ```yaml
 provider: ollama
-model: qwen2.5-coder:7b
+model: qwen3:8b
 base_url: http://host.docker.internal:11434/v1   # Docker Desktop
 # Linux bridge alternative: http://172.17.0.1:11434/v1
 ```
@@ -158,6 +162,30 @@ does not require a key, so `secret_ref` can be omitted. The container needs
 network access to the host endpoint; the current sandbox manager does not
 implement `allowlist` network mode, so use `full` (egress still restricted by
 the host/container network setup) or add allowlist support in plan 02.
+
+For a live smoke test the important property is that the local model returns
+real OpenAI `tool_calls` (not a JSON blob in `message.content`) and can follow
+OpenCode's multi-tool prompt. Check a model directly before a long run:
+
+```bash
+curl -sS http://127.0.0.1:11434/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"write hi to hello.txt"}],"tools":[{"type":"function","function":{"name":"write","parameters":{"type":"object","properties":{"filePath":{"type":"string"},"content":{"type":"string"}}}}]}' \
+  | python3 -m json.tool | grep -A3 tool_calls
+```
+
+Pass the live-test settings through environment variables:
+
+```bash
+DEVSANDBOX_RUN_OPENCODE_INTEGRATION=1 \
+DEVSANDBOX_OPENCODE_LIVE=1 \
+DEVSANDBOX_OPENCODE_PROVIDER=ollama \
+DEVSANDBOX_OPENCODE_MODEL=qwen3:8b \
+DEVSANDBOX_OPENCODE_BASE_URL=http://host.docker.internal:11434/v1 \
+DEVSANDBOX_OPENCODE_NETWORK=full \
+python3 -m pytest -q -s \
+  tests/integration/test_agent_image.py::test_live_free_model_small_task
+```
 
 ### Option B — free hosted tier (OpenRouter)
 

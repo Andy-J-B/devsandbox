@@ -1,6 +1,8 @@
 # Acceptance matrix (plan 11)
 
 **Last full run:** 2026-11-07 (local macOS host)
+**Live free-model smoke test:** 2026-11-09 — see
+[Live free-model smoke test](#live-free-model-smoke-test).
 **Scope:** DevSandbox MVP, plans 01–11, exercised through the real Docker
 sandbox manager, real Git manager, real PostgreSQL, and the real orchestrator.
 The agent is the deterministic `FakeScriptAdapter`/`ScriptedAgent`; no LLM is
@@ -72,6 +74,7 @@ test).
 |---|---|---|
 | Whole repository (default env) | `python3 -m pytest -q` | **571 passed**, 39 skipped (66.6 s); Docker/PostgreSQL integration tests included, E2E/security Docker gates skipped by design |
 | Unit + contract + lint/types | `scripts/check.sh` | ruff/format clean, mypy strict clean, **435 passed**, 175 deselected (29.5 s) |
+| Unit + contract + lint/types (re-run 2026-11-09) | `scripts/check.sh` | ruff/format clean, mypy strict clean, **436 passed**, 175 deselected (33.4 s) |
 | E2E E1–E7, E9–E15 — run 1 | `DEVSANDBOX_E2E=1 pytest -q tests/e2e/test_e2e_core.py tests/e2e/test_e2e_retries_autonomy.py tests/e2e/test_e2e_crash_soak.py -k "not soak"` | **16 passed**, 4 deselected (130.9 s) |
 | E2E E1–E7, E9–E15 — run 2 | same | **16 passed**, 4 deselected (128.8 s) |
 | E2E E1–E7, E9–E15 — run 3 | same | **16 passed**, 4 deselected (129.8 s) |
@@ -94,6 +97,43 @@ Notes:
 - The E2E harness uses a real PostgreSQL database and isolated tables, real Git
   repositories under a temporary data root, and real Docker containers. The
   deterministic agent makes the runs reproducible.
+
+### Live free-model smoke test
+
+Run on **2026-11-09** through the real `OpenCodeAdapter` and Docker sandbox
+manager against a local Ollama OpenAI-compatible endpoint. OpenCode Zen free
+models were tried first, but the account's free quota was exhausted (HTTP 429
+`FreeUsageLimitError`), so the run used a local free model instead.
+
+| Field | Value |
+|---|---|
+| Provider / model | `ollama` / `qwen3:8b` |
+| Endpoint | `http://host.docker.internal:11434/v1` |
+| Network policy | `full` (the container must reach host Ollama) |
+| Exit status | `exited_ok`, exit code `0` |
+| Token usage | input **4,094**, output **1,702**, total **5,796** |
+| Cost | **$0.00** |
+| Duration | **160.05 s** |
+| Result | **Pass** — image built, OpenCode ran, `hello.txt` contained `hello from devsandbox\n`, and the integration assertion passed |
+
+```bash
+DEVSANDBOX_RUN_OPENCODE_INTEGRATION=1 \
+DEVSANDBOX_OPENCODE_LIVE=1 \
+DEVSANDBOX_OPENCODE_PROVIDER=ollama \
+DEVSANDBOX_OPENCODE_MODEL=qwen3:8b \
+DEVSANDBOX_OPENCODE_BASE_URL=http://host.docker.internal:11434/v1 \
+DEVSANDBOX_OPENCODE_NETWORK=full \
+DEVSANDBOX_AGENT_IMAGE=devsandbox/agent:test \
+python3 -m pytest -q -s \
+  tests/integration/test_agent_image.py::test_live_free_model_small_task
+```
+
+`qwen3:8b` completed the task in two OpenCode steps; the adapter summed both
+step token counts. It created the required file, but its follow-up attempt to
+commit used OpenCode's `task` tool instead of `bash`, so the temporary
+workspace still had only the initial commit. This smoke test asserts the real
+agent edit and exit status; independent validation and staging integration are
+covered by the deterministic E2E suite.
 
 ## Security acceptance
 
@@ -120,13 +160,16 @@ security + contract run → 65 passed.
 | PostgreSQL restart | **Not exercised** | `db/session.py` configures `pool_pre_ping=True`, so pooled connections are validated on checkout and replaced after a restart. Lost lease refresh raises `OrchestratorAlreadyRunning`, and the process is expected to be restarted by the service manager. Restarting the shared local PostgreSQL was not done in this run; treat as a manual pre-production check. |
 | Disk-full handling | **Not contained (accepted)** | There is no per-workspace disk quota (residual risk F6). Diff size and changed-file caps run in validation pre-checks, logs are capped, and the scheduler gates on `disk_min_free_mb`; an agent can still fill the host filesystem through its bind-mounted workspace. |
 | Fresh-machine quickstart | **Not reproduced on a brand-new host** | The E2E harness exercises the same real modules and commands as `docs/quickstart.md`, but the documented quickstart was not replayed verbatim on a clean machine in this run. Recommended before release sign-off. |
-| Real OpenCode smoke test | **Not run** | Requires provider/model credentials and is opt-in: `DEVSANDBOX_RUN_OPENCODE_INTEGRATION=1` plus `DEVSANDBOX_OPENCODE_LIVE=1` and provider/model env (`tests/integration/test_agent_image.py`). Must be recorded as passing at least once before MVP sign-off when credentials are available. |
+| Real OpenCode smoke test | **Pass (free local model)** | 2026-11-09: `ollama/qwen3:8b` through `OpenCodeAdapter` + Docker, 4,094 input / 1,702 output / 5,796 total tokens, **$0.00**, exit 0; `hello.txt` assertion passed. OpenCode Zen free models returned HTTP 429 `FreeUsageLimitError` (quota exhausted) on this key, so the run used local Ollama. Command and detail: [Live free-model smoke test](#live-free-model-smoke-test). |
 
 ## Sign-off
 
 The automated acceptance suite covers all 13 criteria with real Docker, real
 Git, and real PostgreSQL, and the 50-run randomized crash soak found zero
-invariant violations. Remaining sign-off items are operational rather than
-code-level: run the opt-in real-OpenCode smoke test, replay the fresh-machine
-quickstart, and perform the Docker/PostgreSQL restart and disk-full drills on a
-dedicated pre-production host.
+invariant violations. The opt-in real-OpenCode smoke test has now passed once
+with a free local model (`ollama/qwen3:8b`, $0.00, 5,796 tokens). Remaining
+sign-off items are operational rather than code-level: replay the
+fresh-machine quickstart, and perform the Docker/PostgreSQL restart and
+disk-full drills on a dedicated pre-production host. Re-run the live smoke
+test against the intended hosted provider once its free quota resets or paid
+credentials are configured.

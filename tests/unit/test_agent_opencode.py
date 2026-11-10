@@ -131,6 +131,7 @@ async def test_config_is_inline_safe_and_references_env_only(
     provider = config["provider"]["my-endpoint"]
     assert provider["options"]["baseURL"] == "http://127.0.0.1:11434/v1"
     assert provider["options"]["apiKey"] == "{env:DEVSANDBOX_MODEL_API_KEY}"
+    assert provider["models"]["cheap"]["tool_call"] is True
     assert "custom-canary-secret" not in json.dumps(config)
 
 
