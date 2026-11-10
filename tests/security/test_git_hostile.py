@@ -27,7 +27,7 @@ async def _git(*args: str, cwd: str | Path) -> str:
 async def _commit_file(repo: Path, rel: str, content: str, message: str) -> str:
     repo.mkdir(parents=True, exist_ok=True)
     if not (repo / ".git").exists():
-        await _git("init", cwd=repo)
+        await _git("init", "-b", "main", cwd=repo)
         await _git("commit", "--allow-empty", "-m", "init", cwd=repo)
     (repo / rel).parent.mkdir(parents=True, exist_ok=True)
     (repo / rel).write_text(content, encoding="utf-8")
