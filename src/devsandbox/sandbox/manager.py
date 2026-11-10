@@ -266,9 +266,12 @@ class DockerSandboxManager:
         }
         labels.update(req.labels)
 
+        # Resolve path to handle macOS /tmp -> /private/tmp symlinks for Docker Desktop bind mounts
+        resolved_workspace_path = req.workspace_path.resolve()
+
         mount = docker.types.Mount(  # type: ignore[attr-defined]
             target="/workspace",
-            source=str(req.workspace_path),
+            source=str(resolved_workspace_path),
             type="bind",
             read_only=False,
         )
