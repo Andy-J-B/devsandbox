@@ -50,7 +50,7 @@ class FakeContextManager:
         self.task_contexts.append(bundle)
         return bundle
 
-    async def analyze_repo(self, repo, revision: str) -> RepoProfile:
+    async def analyze_repo(self, repo, revision: str, **_kwargs) -> RepoProfile:
         """Analyze a repo (or return the next canned profile)."""
         return self._next_profile(revision)
 

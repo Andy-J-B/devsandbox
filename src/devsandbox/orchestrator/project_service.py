@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from ..common.errors import InvalidTransition, PolicyViolation, ProjectNotFoundError
 from ..common.ids import TaskId, new_project_id
 from ..common.types import (
+    CheckSpec,
     ProjectMode,
     ProjectStatus,
     RepoHandle,
@@ -31,6 +32,7 @@ from ..gitmgr.interfaces import GitManager
 from ..planner.interfaces import Planner
 from ..planner.models import Plan, PlanStatus
 from ..planner.service import PlanService
+from ..planner.templates import project_checks_for
 from ..spec.models import ProjectSpec, load_spec
 from ..validation.interfaces import ValidationReport
 from . import events
@@ -42,7 +44,7 @@ from .state_machine import (
 )
 from .support import repo_handle_for_project, spec_from_project
 
-BaselineRunner = Callable[[RepoHandle, str], Awaitable[ValidationReport]]
+BaselineRunner = Callable[[RepoHandle, str, list[CheckSpec]], Awaitable[ValidationReport]]
 
 
 class ProjectService:
@@ -136,10 +138,14 @@ class ProjectService:
                 )
                 await session.commit()
 
-            profile = await self.context.analyze_repo(repo, revision)
+            profile = await self.context.analyze_repo(
+                repo, revision, validation_commands=spec.validation.commands
+            )
 
             if self.baseline_runner is not None:
-                report = await self.baseline_runner(repo, revision)
+                report = await self.baseline_runner(
+                    repo, revision, project_checks_for(spec, profile)
+                )
                 async with self._session_factory() as session:
                     await events.emit_event(
                         session,

@@ -10,15 +10,18 @@ from tests.fakes.planner import FakePlanner
 from tests.planner_helpers import make_spec
 
 from devsandbox.common.errors import InvalidTransition, PolicyViolation
-from devsandbox.common.types import ProjectMode, ProjectStatus, TaskStatus
+from devsandbox.common.types import CheckSpec, ProjectMode, ProjectStatus, TaskStatus
 from devsandbox.config.policy import SecurityPolicy
 from devsandbox.db.repositories import EventRepo, ProjectRepo, TaskRepo
 from devsandbox.orchestrator.models import OrchestratorConfig
 from devsandbox.orchestrator.project_service import ProjectService
 from devsandbox.orchestrator.state_machine import is_legal_project
+from devsandbox.validation.models import BaselineReport
 
 
-def _service(maker, settings, *, planner=None, git=None, context=None) -> ProjectService:
+def _service(
+    maker, settings, *, planner=None, git=None, context=None, baseline_runner=None
+) -> ProjectService:
     return ProjectService(
         maker,
         git=git or FakeGitManager(),
@@ -27,6 +30,7 @@ def _service(maker, settings, *, planner=None, git=None, context=None) -> Projec
         policy=SecurityPolicy(settings),
         settings=settings,
         config=OrchestratorConfig(),
+        baseline_runner=baseline_runner,
     )
 
 
@@ -62,6 +66,23 @@ async def test_supervised_lifecycle_waits_for_approval(db_engine, settings) -> N
     async with maker() as session:
         stored = await ProjectRepo(session).get("proj-1")
     assert stored is not None and stored.active_plan_id == plan.id
+
+
+async def test_analyze_baselines_the_project_validation_checks(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    captured: list[list[CheckSpec]] = []
+
+    async def baseline(repo, revision: str, checks: list[CheckSpec]) -> BaselineReport:
+        captured.append(checks)
+        return BaselineReport(status="passed", revision=revision)
+
+    service = _service(maker, settings, baseline_runner=baseline)
+    spec = make_spec(commands=[CheckSpec(name="tests", run="pytest -q", required=True)])
+    await service.submit_project(spec, project_id="proj-1")
+    await service.analyze("proj-1")
+
+    assert len(captured) == 1
+    assert [check.name for check in captured[0]] == ["tests"]
 
 
 async def test_autonomous_lifecycle_auto_approves(db_engine, settings) -> None:

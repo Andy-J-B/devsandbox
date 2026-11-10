@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from ..common.types import (
+    CheckSpec,
     ContextBundle,
     ProjectContext,
     RepoHandle,
@@ -19,7 +21,13 @@ from ..common.types import (
 class ContextManager(Protocol):
     """Protocol implemented by the context manager / repo analyzer."""
 
-    async def analyze_repo(self, repo: RepoHandle, revision: str) -> RepoProfile: ...
+    async def analyze_repo(
+        self,
+        repo: RepoHandle,
+        revision: str,
+        *,
+        validation_commands: Sequence[CheckSpec | str] | None = None,
+    ) -> RepoProfile: ...
 
     async def get_project_context(self, project_id: str, revision: str) -> ProjectContext: ...
 

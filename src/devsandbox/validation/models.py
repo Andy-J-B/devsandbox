@@ -186,8 +186,8 @@ class BaselineReport(ValidationReport):
     """Validation of an unmodified base revision.
 
     Subclasses :class:`ValidationReport` so the orchestrator's baseline hook
-    (``Callable[[RepoHandle, str], Awaitable[ValidationReport]]``) accepts it
-    without a protocol change.
+    (``Callable[[RepoHandle, str, list[CheckSpec]], Awaitable[ValidationReport]]``)
+    accepts it without a protocol change.
     """
 
     revision: str = ""

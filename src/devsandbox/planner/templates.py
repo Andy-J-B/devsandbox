@@ -33,6 +33,56 @@ def _safe_text(text: str) -> str:
     return cast(str, redact(text))
 
 
+def _sanity_check(spec: ProjectSpec) -> CheckSpec:
+    return CheckSpec(
+        name="repo-sanity",
+        run="git diff --check",
+        required=True,
+        timeout_seconds=min(300, spec.limits.task_timeout_seconds),
+    )
+
+
+def project_checks_for(spec: ProjectSpec, profile: RepoProfile) -> list[CheckSpec]:
+    """Return the project-level checks used for both planning and baselines.
+
+    Spec commands win.  Otherwise detected test commands are required and
+    detected build commands are optional.  A repository with neither gets a
+    deterministic ``git diff --check`` sanity check so validation can never
+    silently accept an empty check set.
+    """
+    if spec.validation.commands:
+        checks = [check.model_copy() for check in spec.validation.commands]
+        if not any(check.required for check in checks):
+            checks.append(_sanity_check(spec))
+        return checks
+
+    commands = profile.effective_test_commands or profile.test_commands
+    checks = []
+    for index, command in enumerate(commands, start=1):
+        name = "tests" if index == 1 else f"tests-{index}"
+        checks.append(
+            CheckSpec(
+                name=name,
+                run=command,
+                required=True,
+                timeout_seconds=min(300, spec.limits.task_timeout_seconds),
+            )
+        )
+    for index, command in enumerate(profile.build_commands, start=1):
+        name = "build" if index == 1 else f"build-{index}"
+        checks.append(
+            CheckSpec(
+                name=name,
+                run=command,
+                required=False,
+                timeout_seconds=min(300, spec.limits.task_timeout_seconds),
+            )
+        )
+    if not checks:
+        checks.append(_sanity_check(spec))
+    return checks
+
+
 class TemplatePlanner:
     """Build a plan from spec goals without any model access."""
 
@@ -184,46 +234,7 @@ class TemplatePlanner:
         return ["Complete the project"]
 
     def _project_checks(self, spec: ProjectSpec, profile: RepoProfile) -> list[CheckSpec]:
-        checks: list[CheckSpec]
-        if spec.validation.commands:
-            checks = [check.model_copy() for check in spec.validation.commands]
-            if not any(check.required for check in checks):
-                checks.append(self._sanity_check(spec))
-            return checks
-
-        commands = profile.effective_test_commands or profile.test_commands
-        checks = []
-        for index, command in enumerate(commands, start=1):
-            name = "tests" if index == 1 else f"tests-{index}"
-            checks.append(
-                CheckSpec(
-                    name=name,
-                    run=command,
-                    required=True,
-                    timeout_seconds=min(300, spec.limits.task_timeout_seconds),
-                )
-            )
-        for index, command in enumerate(profile.build_commands, start=1):
-            name = "build" if index == 1 else f"build-{index}"
-            checks.append(
-                CheckSpec(
-                    name=name,
-                    run=command,
-                    required=False,
-                    timeout_seconds=min(300, spec.limits.task_timeout_seconds),
-                )
-            )
-        if not checks:
-            checks.append(self._sanity_check(spec))
-        return checks
-
-    def _sanity_check(self, spec: ProjectSpec) -> CheckSpec:
-        return CheckSpec(
-            name="repo-sanity",
-            run="git diff --check",
-            required=True,
-            timeout_seconds=min(300, spec.limits.task_timeout_seconds),
-        )
+        return project_checks_for(spec, profile)
 
     def _default_resources(self) -> ResourceProfile:
         return ResourceProfile()
@@ -334,4 +345,4 @@ class TemplatePlanner:
         )
 
 
-__all__ = ["TemplatePlanner", "slugify"]
+__all__ = ["TemplatePlanner", "project_checks_for", "slugify"]
