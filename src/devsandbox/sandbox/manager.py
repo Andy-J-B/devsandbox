@@ -107,11 +107,14 @@ class DockerSandboxManager:
         resources = self._policy.effective_resources(req.resources)
 
         await asyncio.to_thread(self._ensure_image, req.image)
+
+        # Ensure the workspace directory exists on the host before container creation
+        req.workspace_path.mkdir(parents=True, exist_ok=True)
+
         container = await asyncio.to_thread(
             self._create_or_replace_container, req, network, resources
         )
         container_id = container.id
-
         log_dir = self._data_root / "logs" / str(req.attempt_id)
         log_dir.mkdir(parents=True, exist_ok=True)
         stdout_path = log_dir / "stdout.log"
@@ -266,7 +269,7 @@ class DockerSandboxManager:
         }
         labels.update(req.labels)
 
-        # Resolve path to handle macOS /tmp -> /private/tmp symlinks for Docker Desktop bind mounts
+        # Resolve path symlinks (e.g., /tmp -> /private/tmp) for Docker bind mounts
         resolved_workspace_path = req.workspace_path.resolve()
 
         mount = docker.types.Mount(  # type: ignore[attr-defined]
