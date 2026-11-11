@@ -155,6 +155,8 @@ class TemplatePlanner:
                     ],
                     checks=[check.model_copy() for check in checks],
                     restricted_files=list(spec.constraints.restricted_paths),
+                    # Verification may legitimately produce no changes.
+                    allow_no_changes=True,
                     resources=self._default_resources(),
                     timeout_seconds=spec.limits.task_timeout_seconds,
                     max_retries=spec.limits.max_retries,
@@ -258,6 +260,8 @@ class TemplatePlanner:
             ],
             checks=[check.model_copy() for check in checks],
             restricted_files=list(spec.constraints.restricted_paths),
+            # A baseline check must not change the repository.
+            allow_no_changes=True,
             resources=self._default_resources(),
             timeout_seconds=spec.limits.task_timeout_seconds,
             max_retries=spec.limits.max_retries,

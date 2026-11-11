@@ -61,6 +61,8 @@ async def test_template_plan_from_goals() -> None:
     }
     assert plan.tasks[0].checks[0].run == "pytest -q"
     assert plan.tasks[0].success_criteria
+    assert plan.tasks[0].allow_no_changes is False
+    assert plan.tasks[2].allow_no_changes is True
     assert plan.generated_by == "template"
     assert plan.source_revision == "abc123"
     assert "Keep the API stable" in plan.tasks[0].instructions
@@ -108,6 +110,7 @@ async def test_template_baseline_and_final_flags() -> None:
     spec = make_spec(goals=["One goal"])
     plan = await planner.generate_plan(spec, _profile(), _ctx())
     assert plan.tasks[0].key == "baseline"
+    assert plan.tasks[0].allow_no_changes is True
     assert plan.tasks[1].depends_on == ["baseline"]
     assert all(task.key != "final-verification" for task in plan.tasks)
 

@@ -114,6 +114,7 @@ class TaskModel(Base):
     checks_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     expected_files_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     restricted_files_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    allow_no_changes: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     resource_profile_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=1800)
     max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

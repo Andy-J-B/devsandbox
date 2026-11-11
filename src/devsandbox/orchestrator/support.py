@@ -60,6 +60,7 @@ def task_spec_from_model(task: TaskModel) -> TaskSpec:
         success_criteria=list(task.success_criteria_json or []),
         expected_files=list(task.expected_files_json or []),
         restricted_files=list(task.restricted_files_json or []),
+        allow_no_changes=task.allow_no_changes,
         checks=checks_from_task(task),
         resources=resources,
         timeout_seconds=task.timeout_seconds,

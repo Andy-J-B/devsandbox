@@ -93,6 +93,17 @@ async def test_create_plan_persists_tasks_and_dependencies(db_session, settings)
     assert dependencies == [by_key["task-a"].id]
 
 
+async def test_create_plan_persists_allow_no_changes(db_session, settings) -> None:
+    await _project(db_session)
+    planner = FakePlanner([_proposed(make_draft("verify", allow_no_changes=True))])
+    service = _service(db_session, settings, planner)
+    plan = await service.create_plan("proj-1")
+
+    assert plan.tasks[0].allow_no_changes is True
+    stored = await _task_by_key(db_session, plan.id, "verify")
+    assert stored.allow_no_changes is True
+
+
 async def test_invalid_plan_is_rejected_and_issues_are_stored(db_session, settings) -> None:
     await _project(db_session, commands=[])
     invalid = make_draft(

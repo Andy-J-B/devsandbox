@@ -12,6 +12,7 @@
   "source_revision": "abc123",
   "tasks": [
     {
+      "allow_no_changes": false,
       "checks": [
         {
           "allowed_hosts": [],
@@ -72,6 +73,7 @@
       "title": "Add feature A"
     },
     {
+      "allow_no_changes": false,
       "checks": [
         {
           "allowed_hosts": [],
@@ -134,6 +136,7 @@
       "title": "Fix bug B"
     },
     {
+      "allow_no_changes": true,
       "checks": [
         {
           "allowed_hosts": [],

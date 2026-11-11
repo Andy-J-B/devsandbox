@@ -57,6 +57,7 @@ class TaskDraft(BaseModel):
     checks: list[CheckSpec] = Field(default_factory=list)
     expected_files: list[str] = Field(default_factory=list)
     restricted_files: list[str] = Field(default_factory=list)
+    allow_no_changes: bool = False
     resources: ResourceProfile = Field(default_factory=ResourceProfile)
     timeout_seconds: int = 1800
     max_retries: int = 0
