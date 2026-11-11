@@ -248,6 +248,12 @@ async def _dump_failure_diagnostics(env: E2EEnvironment) -> None:
                     "E2E-DIAG   validation="
                     f"{json.dumps(attempt.validation_report_json, default=str)}"
                 )
+                for log_name in ("stdout.log", "stderr.log"):
+                    log_path = env.data_root / "logs" / attempt.id / log_name
+                    if log_path.is_file():
+                        print(
+                            f"E2E-DIAG   {log_name}={log_path.read_text(errors='replace')[:4000]}"
+                        )
 
 
 @pytest.fixture
