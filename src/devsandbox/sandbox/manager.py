@@ -37,6 +37,7 @@ from requests.exceptions import (
 )
 
 from ..common.errors import PolicyViolation, SandboxError
+from ..common.permissions import make_writable
 from ..common.redaction import redact
 from ..common.time import utcnow
 from ..common.types import AttemptId, NetworkPolicy, ResourceProfile
@@ -108,8 +109,13 @@ class DockerSandboxManager:
 
         await asyncio.to_thread(self._ensure_image, req.image)
 
-        # Ensure the workspace directory physically exists on the host before container creation
+        # Ensure the workspace directory physically exists on the host before
+        # container creation and that uid 1000 can write to it.  A Linux bind
+        # mount preserves host ownership, so a workspace created by a
+        # different orchestrator uid (for example ``runner`` on CI) would
+        # otherwise be read-only for the container.
         req.workspace_path.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(make_writable, req.workspace_path)
 
         container = await asyncio.to_thread(
             self._create_or_replace_container, req, network, resources
