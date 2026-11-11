@@ -2546,6 +2546,11 @@
         "additionalProperties": false,
         "description": "A task draft produced by a planner before it is persisted.",
         "properties": {
+          "allow_no_changes": {
+            "default": false,
+            "title": "Allow No Changes",
+            "type": "boolean"
+          },
           "checks": {
             "items": {
               "$ref": "#/components/schemas/CheckSpec"
