@@ -108,7 +108,7 @@ class DockerSandboxManager:
 
         await asyncio.to_thread(self._ensure_image, req.image)
 
-        # Ensure the workspace directory exists on the host before container creation
+        # Ensure the workspace directory physically exists on the host before container creation
         req.workspace_path.mkdir(parents=True, exist_ok=True)
 
         container = await asyncio.to_thread(
@@ -137,7 +137,9 @@ class DockerSandboxManager:
             with contextlib.suppress(Exception):
                 log_socket.close()
             await asyncio.to_thread(self._remove_container_ignoring_errors, container)
-            raise SandboxError(f"failed to start container for {req.attempt_id}: {exc}") from exc
+            raise SandboxError(
+                f"failed to start container for {req.attempt_id}: {exc}"
+            ) from exc
 
         stop_sampling = threading.Event()
         peak_usage: list[int] = [0]
@@ -151,7 +153,9 @@ class DockerSandboxManager:
             )
         )
         sampler_task = asyncio.create_task(
-            asyncio.to_thread(self._sample_peak_memory, container, stop_sampling, peak_usage)
+            asyncio.to_thread(
+                self._sample_peak_memory, container, stop_sampling, peak_usage
+            )
         )
 
         try:
@@ -165,7 +169,10 @@ class DockerSandboxManager:
                 # docker-py raises ``requests.ConnectionError`` wrapping a read
                 # timeout on some daemon/transport versions.  Re-raise real
                 # connection failures instead of misreporting them as timeouts.
-                if isinstance(exc, RequestsConnectionError) and "timed out" not in str(exc).lower():
+                if (
+                    isinstance(exc, RequestsConnectionError)
+                    and "timed out" not in str(exc).lower()
+                ):
                     raise
                 timed_out = True
                 await asyncio.to_thread(container.kill, signal="SIGTERM")
@@ -174,7 +181,11 @@ class DockerSandboxManager:
                         asyncio.to_thread(container.wait, timeout=_GRACE_SECONDS),
                         timeout=_GRACE_SECONDS + 5.0,
                     )
-                    exit_code = int(wait_result.get("StatusCode", 0) or 0) if wait_result else None
+                    exit_code = (
+                        int(wait_result.get("StatusCode", 0) or 0)
+                        if wait_result
+                        else None
+                    )
                 except (ReadTimeout, TimeoutError, RequestsConnectionError):
                     await asyncio.to_thread(container.kill, signal="SIGKILL")
                     await asyncio.to_thread(container.wait)
@@ -237,7 +248,9 @@ class DockerSandboxManager:
         try:
             return self._client.containers.create(**kwargs)
         except APIError as exc:
-            raise SandboxError(f"failed to create container for {req.attempt_id}: {exc}") from exc
+            raise SandboxError(
+                f"failed to create container for {req.attempt_id}: {exc}"
+            ) from exc
 
     @staticmethod
     def _attach_logs_socket(container: Any) -> Any:
@@ -269,12 +282,9 @@ class DockerSandboxManager:
         }
         labels.update(req.labels)
 
-        # Resolve path symlinks (e.g., /tmp -> /private/tmp) for Docker bind mounts
-        resolved_workspace_path = req.workspace_path.resolve()
-
         mount = docker.types.Mount(  # type: ignore[attr-defined]
             target="/workspace",
-            source=str(resolved_workspace_path),
+            source=str(req.workspace_path),
             type="bind",
             read_only=False,
         )
@@ -363,7 +373,9 @@ class DockerSandboxManager:
         return b"".join(chunks)
 
     @staticmethod
-    def _write_to_cap(file: Any, data: bytes, already_written: int, cap_bytes: int) -> int:
+    def _write_to_cap(
+        file: Any, data: bytes, already_written: int, cap_bytes: int
+    ) -> int:
         """Write up to ``cap_bytes`` total; return new written count."""
         if already_written >= cap_bytes:
             return already_written
@@ -375,7 +387,9 @@ class DockerSandboxManager:
         file.write(data)
         return already_written + len(data)
 
-    def _sample_peak_memory(self, container: Any, stop: threading.Event, peak: list[int]) -> None:
+    def _sample_peak_memory(
+        self, container: Any, stop: threading.Event, peak: list[int]
+    ) -> None:
         """Best-effort peak memory sampler (runs in a worker thread)."""
         while not stop.is_set():
             try:
@@ -392,7 +406,9 @@ class DockerSandboxManager:
         with contextlib.suppress(Exception):
             container.remove(force=True)
 
-    async def exec_in(self, container_id: str, cmd: list[str], timeout_seconds: int) -> ExecResult:
+    async def exec_in(
+        self, container_id: str, cmd: list[str], timeout_seconds: int
+    ) -> ExecResult:
         """Execute ``cmd`` inside a running container."""
         try:
             await asyncio.to_thread(self._client.containers.get, container_id)
@@ -400,9 +416,13 @@ class DockerSandboxManager:
             raise SandboxError(f"container {container_id} not found") from exc
 
         try:
-            exec_id = await asyncio.to_thread(self._client.api.exec_create, container_id, cmd)
+            exec_id = await asyncio.to_thread(
+                self._client.api.exec_create, container_id, cmd
+            )
             await asyncio.wait_for(
-                asyncio.to_thread(self._client.api.exec_start, exec_id, timeout=timeout_seconds),
+                asyncio.to_thread(
+                    self._client.api.exec_start, exec_id, timeout=timeout_seconds
+                ),
                 timeout=timeout_seconds + 10.0,
             )
             inspect = await asyncio.to_thread(self._client.api.exec_inspect, exec_id)
@@ -422,7 +442,9 @@ class DockerSandboxManager:
 
     async def kill(self, container_id: str) -> None:
         try:
-            container = await asyncio.to_thread(self._client.containers.get, container_id)
+            container = await asyncio.to_thread(
+                self._client.containers.get, container_id
+            )
         except NotFound:
             return
         with contextlib.suppress(APIError):
@@ -430,7 +452,9 @@ class DockerSandboxManager:
 
     async def destroy(self, container_id: str) -> None:
         try:
-            container = await asyncio.to_thread(self._client.containers.get, container_id)
+            container = await asyncio.to_thread(
+                self._client.containers.get, container_id
+            )
         except NotFound:
             return
         with contextlib.suppress(APIError):
@@ -453,7 +477,9 @@ class DockerSandboxManager:
 
     async def inspect(self, container_id: str) -> ManagedContainer | None:
         try:
-            container = await asyncio.to_thread(self._client.containers.get, container_id)
+            container = await asyncio.to_thread(
+                self._client.containers.get, container_id
+            )
         except NotFound:
             return None
         return ManagedContainer(

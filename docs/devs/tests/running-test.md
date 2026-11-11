@@ -38,7 +38,7 @@ pip install -e '.[dev]'
 Build and tag the validator image so that the security test suite's image inspection checks succeed:
 
 ```bash
-docker build -t devsandbox/validator:latest .
+ docker build -t devsandbox/validator:latest -f ./docker/validator-base/Dockerfile .
 
 ```
 
