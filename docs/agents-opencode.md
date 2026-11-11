@@ -148,20 +148,26 @@ ollama pull qwen3:8b
 OLLAMA_HOST=0.0.0.0:11434 ollama serve
 ```
 
-In the project spec / orchestrator model config:
+In the orchestrator environment (the supported path for selecting the model):
 
-```yaml
-provider: ollama
-model: qwen3:8b
-base_url: http://host.docker.internal:11434/v1   # Docker Desktop
-# Linux bridge alternative: http://172.17.0.1:11434/v1
+```bash
+export DEVSANDBOX_AGENT__DEFAULT_MODEL="ollama/qwen3:8b"
+export DEVSANDBOX_AGENT__BASE_URL="http://host.docker.internal:11434/v1"
+export DEVSANDBOX_SECURITY__ALLOW_NETWORK_DEFAULT=true
 ```
+
+Use `http://172.17.0.1:11434/v1` (or your Docker bridge/gateway address) on
+Linux instead of `host.docker.internal`. The `provider/model` form is split
+automatically; set `DEVSANDBOX_AGENT__DEFAULT_PROVIDER` explicitly when the
+model id itself contains a slash.
 
 The adapter renders an OpenAI-compatible provider using `base_url`. Ollama
 does not require a key, so `secret_ref` can be omitted. The container needs
 network access to the host endpoint; the current sandbox manager does not
-implement `allowlist` network mode, so use `full` (egress still restricted by
-the host/container network setup) or add allowlist support in plan 02.
+implement `allowlist` network mode, so use `full` egress
+(`security.allow_network_default=true`; still restricted by the host/container
+network setup) or add allowlist support in plan 02. A project spec cannot widen
+this policy.
 
 For a live smoke test the important property is that the local model returns
 real OpenAI `tool_calls` (not a JSON blob in `message.content`) and can follow

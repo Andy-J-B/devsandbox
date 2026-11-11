@@ -43,8 +43,12 @@ limits:                     # may only NARROW global policy
   max_concurrency: 1
 agent:
   runtime: opencode
-  model: null               # falls back to settings
+  model: null               # currently informational; runtime/model come from settings.agent
 ```
+
+> Runtime and model selection are configured through the orchestrator settings
+> (`DEVSANDBOX_AGENT__*`). The spec's `agent` block is validated and stored but
+> does not currently override the runtime or model chosen by the orchestrator.
 
 ## Rules
 

@@ -149,11 +149,20 @@ Validate the spec offline before submitting: `devsandbox validate-spec hello.yam
 
 ### Review and merge (manual)
 
+Validated work is on `devsandbox/PROJECT_ID/staging` in the per-project bare
+mirror under the data root, not in the source repository. Fetch it first:
+
 ```bash
-git -C /path/to/repo log main..devsandbox/PROJECT_ID/staging
-git -C /path/to/repo diff main..devsandbox/PROJECT_ID/staging
-git -C /path/to/repo merge --no-ff devsandbox/PROJECT_ID/staging
+MIRROR="$DEVSANDBOX_DATA_ROOT/repos/PROJECT_ID/repo.git"
+BRANCH="devsandbox/PROJECT_ID/staging"
+git -C /path/to/repo fetch "$MIRROR" "${BRANCH}:refs/heads/${BRANCH}"
+git -C /path/to/repo log main.."$BRANCH"
+git -C /path/to/repo diff main.."$BRANCH"
+git -C /path/to/repo merge --no-ff "$BRANCH"
 ```
+
+If you submitted a non-git directory, clone the mirror instead and use the
+staging branch there (`git clone "$MIRROR" project-review`).
 
 ## Configuration essentials
 

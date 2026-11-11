@@ -32,3 +32,19 @@ devsandbox approve PLAN_ID
 devsandbox start PROJECT_ID
 devsandbox status PROJECT_ID --watch
 devsandbox report PROJECT_ID --out report.md
+
+Validated work lands on `devsandbox/<PROJECT_ID>/staging` in the per-project
+bare mirror at `$DEVSANDBOX_DATA_ROOT/repos/<PROJECT_ID>/repo.git`, not in the
+source repository. To review and merge it manually:
+
+```bash
+MIRROR="$DEVSANDBOX_DATA_ROOT/repos/PROJECT_ID/repo.git"
+BRANCH="devsandbox/PROJECT_ID/staging"
+git -C /path/to/repo fetch "$MIRROR" "${BRANCH}:refs/heads/${BRANCH}"
+git -C /path/to/repo log main.."$BRANCH"
+git -C /path/to/repo diff main.."$BRANCH"
+git -C /path/to/repo merge --no-ff "$BRANCH"
+```
+
+See [docs/quickstart.md](docs/quickstart.md) for the full walkthrough,
+including local Ollama configuration.

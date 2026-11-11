@@ -1,7 +1,9 @@
 # DevSandbox configuration
 
 Settings are loaded from `DEVSANDBOX_*` environment variables and/or the
-optional `devsandbox.toml` file (see plan 01 deliverables).
+optional `devsandbox.toml` file (see plan 01 deliverables). Nested keys use a
+double underscore, for example `DEVSANDBOX_SECURITY__ALLOW_NETWORK_DEFAULT=true`
+and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
 
 - `data_root`, `database_url`
 - `limits`: `max_global_concurrency` (MVP default 1), `max_project_concurrency`,
@@ -14,7 +16,22 @@ optional `devsandbox.toml` file (see plan 01 deliverables).
   `DEVSANDBOX_API_TOKEN` alias), `max_spec_bytes`, `max_log_bytes`,
   `max_log_lines`, `expensive_rate_limit_per_minute`, `request_id_header`,
   `run_engine`
-- `agent`: `default_runtime`, `default_model`, `model_budget`
+- `agent`: `default_runtime`, `default_provider`, `default_model`, `base_url`,
+  `secret_ref`, `model_budget`
+  - `default_model` accepts a bare model id (`qwen3:8b`) or a
+    `provider/model` reference (`ollama/qwen3:8b`). Use `default_provider` when
+    the model id itself contains a slash.
+  - `base_url` points an OpenAI-compatible endpoint at a custom server; for a
+    local Ollama instance use `http://host.docker.internal:11434/v1` on Docker
+    Desktop (or the host bridge address on Linux).
+  - `secret_ref` names a `[secrets.<name>]` entry; the secret value is injected
+    only into the agent container, under the provider's standard API-key
+    variable (for example `OPENROUTER_API_KEY`) or
+    `DEVSANDBOX_MODEL_API_KEY` for custom OpenAI-compatible endpoints. It is
+    never written to prompts, config, commands, or logs.
+  - The sandbox has no egress by default. Reaching a host-local model also
+    requires `DEVSANDBOX_SECURITY__ALLOW_NETWORK_DEFAULT=true`; project specs
+    cannot widen that policy.
 - `validation`: independent validation policy (plan 09)
   - `image` (default `devsandbox/validator:latest`), `max_output_bytes`
   - `max_changed_files`, `max_diff_lines`
