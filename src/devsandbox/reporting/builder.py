@@ -416,7 +416,13 @@ def _outstanding(tasks: list[ReportTask], warnings: list[str]) -> ReportOutstand
 def _staging_instructions(project: ProjectModel, staging_branch: str) -> list[str]:
     branch = staging_branch or project.staging_branch
     main = project.main_branch or "main"
+    mirror = f"$DEVSANDBOX_DATA_ROOT/repos/{project.id}/repo.git"
     return [
+        (
+            "Fetch the staging branch from the project mirror "
+            f"(run in your source repository): git fetch {mirror} "
+            f"{branch}:refs/heads/{branch}"
+        ),
         f"Review integrated work: git log {main}..{branch}",
         f"Review the diff: git diff {main}..{branch}",
         "DevSandbox never merges into the main branch automatically.",

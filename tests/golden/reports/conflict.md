@@ -81,6 +81,7 @@ _No resource or limit events._
 
 ## Staging branch
 
+- `Fetch the staging branch from the project mirror (run in your source repository): git fetch $DEVSANDBOX_DATA_ROOT/repos/proj-conflict/repo.git devsandbox/proj-conflict/staging:refs/heads/devsandbox/proj-conflict/staging`
 - `Review integrated work: git log main..devsandbox/proj-conflict/staging`
 - `Review the diff: git diff main..devsandbox/proj-conflict/staging`
 - `DevSandbox never merges into the main branch automatically.`

@@ -68,6 +68,15 @@ async def test_report_matches_golden_files(db_engine, tmp_path, scenario) -> Non
     assert markdown == markdown_path.read_text(encoding="utf-8")
 
 
+async def test_staging_instructions_point_at_project_mirror(db_engine, tmp_path) -> None:
+    report = await _build(db_engine, tmp_path, "all_success")
+    instructions = "\n".join(report.staging_instructions)
+    mirror = f"$DEVSANDBOX_DATA_ROOT/repos/{report.header.project_id}/repo.git"
+
+    assert f"git fetch {mirror}" in instructions
+    assert "git merge --no-ff" in instructions
+
+
 async def test_costs_are_split_and_budget_remaining(db_engine, tmp_path) -> None:
     report = await _build(db_engine, tmp_path, "all_success")
     assert report.costs.infra_usd == 0.25

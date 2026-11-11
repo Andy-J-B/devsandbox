@@ -126,6 +126,7 @@
 
 ## Staging branch
 
+- `Fetch the staging branch from the project mirror (run in your source repository): git fetch $DEVSANDBOX_DATA_ROOT/repos/proj-mixed_failures/repo.git devsandbox/proj-mixed_failures/staging:refs/heads/devsandbox/proj-mixed_failures/staging`
 - `Review integrated work: git log main..devsandbox/proj-mixed_failures/staging`
 - `Review the diff: git diff main..devsandbox/proj-mixed_failures/staging`
 - `DevSandbox never merges into the main branch automatically.`
