@@ -85,7 +85,7 @@ _No integrations._
 
 ## Staging branch
 
-- `Fetch the staging branch from the project mirror (run in your source repository): git fetch $DEVSANDBOX_DATA_ROOT/repos/proj-policy_denial/repo.git devsandbox/proj-policy_denial/staging:refs/heads/devsandbox/proj-policy_denial/staging`
+- `Fetch the staging branch from the project mirror (run in your source repository): git fetch "$DEVSANDBOX_DATA_ROOT/repos/proj-policy_denial/repo.git" "devsandbox/proj-policy_denial/staging:refs/heads/devsandbox/proj-policy_denial/staging"`
 - `Review integrated work: git log main..devsandbox/proj-policy_denial/staging`
 - `Review the diff: git diff main..devsandbox/proj-policy_denial/staging`
 - `DevSandbox never merges into the main branch automatically.`
