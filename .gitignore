@@ -223,3 +223,8 @@ plans/
 
 # Test fixture intentionally contains a fake secret-bearing .env
 !tests/fixtures/repos/python-pytest/.env
+
+# Local DevSandbox runtime state (quickstart data root, test scratch)
+.devsandbox/
+.devsandbox-*/
+.pytest-tmp/
