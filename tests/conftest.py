@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -70,7 +71,14 @@ def settings():
 
 @pytest.fixture(scope="session")
 def postgres_container():
-    """Start an ephemeral Postgres container, or ``None`` when unavailable."""
+    """Start an ephemeral Postgres container, or ``None`` when unavailable.
+
+    Setting ``DEVSANDBOX_TEST_DATABASE_URL`` opts out of testcontainers so CI
+    can point the suite at a PostgreSQL service instead of starting a
+    duplicate container on the same Docker daemon.
+    """
+    if os.environ.get("DEVSANDBOX_TEST_DATABASE_URL"):
+        return None
     try:
         from testcontainers.postgresql import PostgresContainer
 
@@ -83,11 +91,15 @@ def postgres_container():
 
 @pytest.fixture(scope="session")
 def postgres_url(postgres_container) -> str:
-    """Return the ephemeral Postgres connection URL.
+    """Return the Postgres connection URL used by integration tests.
 
-    Prefers a throwaway testcontainers instance; falls back to the configured
+    Prefers an explicit ``DEVSANDBOX_TEST_DATABASE_URL`` (for CI services),
+    then a throwaway testcontainers instance, and finally the configured
     ``DEVSANDBOX_DATABASE_URL`` (local dev database) when Docker is unavailable.
     """
+    explicit = os.environ.get("DEVSANDBOX_TEST_DATABASE_URL")
+    if explicit:
+        return explicit
     if postgres_container is not None:
         return postgres_container.get_connection_url()
     from devsandbox.config import settings as settings_module
