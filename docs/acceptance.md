@@ -134,6 +134,14 @@ python3 -m pytest -q -s \
   tests/integration/test_agent_image.py::test_live_free_model_small_task
 ```
 
+The same live test is wired into the manual `opencode-smoke` job in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It builds the
+agent image once with the tag the test fixture uses
+(`devsandbox/agent:test`), defaults to the free
+`opencode/deepseek-v4.1-flash-free` model, and reads the API key from the
+`OPENCODE_API_KEY` repository secret. Override the provider/model/base URL
+with the job's `workflow_dispatch` inputs or repository variables.
+
 `qwen3:8b` completed the task in two OpenCode steps; the adapter summed both
 step token counts. It created the required file, but its follow-up attempt to
 commit used OpenCode's `task` tool instead of `bash`, so the temporary

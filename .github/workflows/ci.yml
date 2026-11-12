@@ -4,6 +4,23 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      opencode_live:
+        description: "Call a real model (requires the OPENCODE_API_KEY secret)"
+        type: boolean
+        default: true
+      opencode_provider:
+        description: "OpenCode provider id (empty: repo variable or 'opencode')"
+        type: string
+        default: ""
+      opencode_model:
+        description: "OpenCode model id (empty: repo variable or 'deepseek-v4.1-flash-free')"
+        type: string
+        default: ""
+      opencode_base_url:
+        description: "Optional OpenAI-compatible base URL (for local/custom endpoints)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -105,15 +122,31 @@ jobs:
     name: opencode smoke (manual)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    env:
+      DEVSANDBOX_RUN_OPENCODE_INTEGRATION: "1"
+      DEVSANDBOX_AGENT_IMAGE: devsandbox/agent:test
+      DEVSANDBOX_OPENCODE_LIVE: ${{ inputs.opencode_live && '1' || '0' }}
+      DEVSANDBOX_OPENCODE_PROVIDER: ${{ inputs.opencode_provider || vars.DEVSANDBOX_OPENCODE_PROVIDER || 'opencode' }}
+      DEVSANDBOX_OPENCODE_MODEL: ${{ inputs.opencode_model || vars.DEVSANDBOX_OPENCODE_MODEL || 'deepseek-v4.1-flash-free' }}
+      DEVSANDBOX_OPENCODE_BASE_URL: ${{ inputs.opencode_base_url || vars.DEVSANDBOX_OPENCODE_BASE_URL }}
+      DEVSANDBOX_OPENCODE_NETWORK: full
+      DEVSANDBOX_OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
+      - name: verify live smoke credentials
+        if: ${{ env.DEVSANDBOX_OPENCODE_LIVE == '1' && env.DEVSANDBOX_OPENCODE_BASE_URL == '' }}
+        run: |
+          if [ -z "${DEVSANDBOX_OPENCODE_API_KEY}" ]; then
+            echo "::error::Set the OPENCODE_API_KEY repository secret, or pass a key-less opencode_base_url."
+            exit 1
+          fi
       - name: build agent image
-        run: docker build -t devsandbox/agent:latest docker/agent-base
+        run: IMAGE="$DEVSANDBOX_AGENT_IMAGE" docker/agent-base/build.sh
       - name: real OpenCode smoke test
-        env:
-          DEVSANDBOX_RUN_OPENCODE_INTEGRATION: "1"
-        run: pytest -q -m opencode
+        run: pytest -q -s -m opencode

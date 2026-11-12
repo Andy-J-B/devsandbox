@@ -322,6 +322,21 @@ DEVSANDBOX_OPENCODE_API_KEY=... \
 pytest -m opencode tests/integration/test_agent_image.py
 ```
 
+### Manual CI smoke job
+
+The `opencode-smoke` job in `.github/workflows/ci.yml` is manual
+(`workflow_dispatch`) and runs the image/tooling checks plus the live test
+against the same agent image tag the fixture uses (`devsandbox/agent:test`).
+It defaults to `opencode/deepseek-v4.1-flash-free` with `network=full`.
+
+Before dispatching it, add the `OPENCODE_API_KEY` repository secret (a Zen
+key). To use a different hosted model, local Ollama endpoint, or a paid
+provider, set the `DEVSANDBOX_OPENCODE_PROVIDER`,
+`DEVSANDBOX_OPENCODE_MODEL`, and optionally
+`DEVSANDBOX_OPENCODE_BASE_URL` repository variables, or pass the equivalent
+`workflow_dispatch` inputs. The job fails early with a clear message when it
+has neither an API key nor a custom base URL.
+
 Unit coverage includes prompt determinism/truncation/redaction, every
 sandbox exit mapping, cancel, prompt/config placement outside the repo,
 secret-env-only injection, budget blocking/recording, fake-agent modes, and
