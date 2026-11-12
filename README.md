@@ -8,10 +8,11 @@ results independently, and integrates validated work into a staging branch.
 ## Development
 
 ```bash
-make up       # start postgres via docker compose
-make migrate  # alembic upgrade head
-make test     # pytest
-make check    # scripts/check.sh (ruff + ruff format + mypy strict + pytest)
+make up          # start postgres via docker compose
+make migrate     # alembic upgrade head
+make test        # pytest
+make integration # PostgreSQL-backed integration tests (no Docker required)
+make check       # scripts/check.sh (ruff + ruff format + mypy strict + pytest)
 ```
 
 ## How to use

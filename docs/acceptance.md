@@ -19,6 +19,9 @@ primary test(s); the E2E footer lists the run evidence.
 # static checks: ruff + ruff format + mypy strict + unit/contract
 scripts/check.sh
 
+# PostgreSQL-backed integration suite (same command as CI's `integration` job)
+python3 -m pytest -q -m "integration and not docker"
+
 # real PostgreSQL + Docker + Git end-to-end scenarios
 DEVSANDBOX_E2E=1 python3 -m pytest -q tests/e2e
 
@@ -33,7 +36,10 @@ DEVSANDBOX_E2E=1 python3 -m pytest -q tests/security tests/contract
 Prerequisites: Docker daemon reachable by the current user,
 `devsandbox/validator:latest` available, and PostgreSQL 16 reachable via
 `DEVSANDBOX_DATABASE_URL` (the suite creates isolated tables and drops them per
-test).
+test). To reuse an existing PostgreSQL service, set
+`DEVSANDBOX_TEST_DATABASE_URL` to its `postgresql+asyncpg://...` URL; CI uses
+this to share the job's Postgres service. Without that override, tests start an
+ephemeral PostgreSQL container via testcontainers when Docker is available.
 
 ## 13-criteria matrix
 
