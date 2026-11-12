@@ -47,7 +47,6 @@ services:
       DEVSANDBOX_DATA_ROOT: ${DEVSANDBOX_DATA_ROOT:-/var/lib/devsandbox}
       DEVSANDBOX_API__HOST: 0.0.0.0
       DEVSANDBOX_API__PORT: "8000"
-      DEVSANDBOX_SECURITY__ALLOW_MAIN_MERGE: "false"
       DEVSANDBOX_SECURITY__ALLOW_PUSH: "false"
       # Project repos given as local paths must also exist at the same path
       # inside this container (mount their parent explicitly), or use URLs.

@@ -178,11 +178,6 @@ class OrchestratorEngine:
         self.sandbox = sandbox
         self.settings = settings or get_settings()
         self.policy = policy or SecurityPolicy(self.settings)
-        if self.policy.main_merge_allowed():
-            _log.warning(
-                "allow_main_merge is enabled, but the orchestrator has no main-branch "
-                "merge path in the MVP; the setting is ignored"
-            )
         self.config = config or OrchestratorConfig.from_settings(self.settings)
         self.scheduler_config = scheduler_config or SchedulerConfig.from_settings(self.settings)
         self.classifier = classifier or FailureClassifier(

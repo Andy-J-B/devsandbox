@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,9 +52,13 @@ class RetriesConfig(BaseModel):
 class SecurityConfig(BaseModel):
     """Security posture (never sourced from the project spec)."""
 
+    # Fail closed on unknown nested keys.  Removing a setting must not turn a
+    # stale operator override (for example ``ALLOW_MAIN_MERGE``) into a silent
+    # no-op that looks like it was applied.
+    model_config = ConfigDict(extra="forbid")
+
     allow_network_default: bool = False
     allow_push: bool = False
-    allow_main_merge: bool = False
     allow_autonomous_mode: bool = True
     allowed_images: list[str] = Field(default_factory=list)
 

@@ -17,8 +17,8 @@ change independently, and integrates validated work onto a per-project
 
 - **Never trust the agent.** Completion requires an independent validation
   report; agent claims, summaries, and token counts are untrusted inputs.
-- **Never touch `main`.** Integration is staging-only; push and main-merge are
-  denied by default (`security.allow_push`, `security.allow_main_merge`).
+- **Never touch `main`.** Integration is staging-only; push is denied by
+  default (`security.allow_push`), and there is no main-merge path or setting.
 - **Policy comes from settings, not specs.** Specs can narrow limits; they can
   never widen network, resources, retries, push, or main-merge policy.
 - **Containers are locked down.** Non-root uid 1000, read-only rootfs, no Docker

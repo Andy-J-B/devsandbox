@@ -46,7 +46,6 @@ def security_settings(tmp_path: Path) -> DevSandboxSettings:
         security=SecurityConfig(
             allow_network_default=False,
             allow_push=False,
-            allow_main_merge=False,
             allowed_images=[DEFAULT_IMAGE],
         ),
         validation=ValidationSettings(image=DEFAULT_IMAGE),

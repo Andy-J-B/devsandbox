@@ -142,7 +142,7 @@ class FakeDockerClient:
 
 
 def _make_settings(*, allowed_images: list[str] | None = None) -> DevSandboxSettings:
-    security = {"allow_network_default": True, "allow_push": False, "allow_main_merge": False}
+    security = {"allow_network_default": True, "allow_push": False}
     if allowed_images is not None:
         security["allowed_images"] = allowed_images
     return DevSandboxSettings(security=security)  # type: ignore[arg-type]

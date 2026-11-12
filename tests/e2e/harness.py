@@ -170,7 +170,6 @@ def make_settings(
         security=SecurityConfig(
             allow_network_default=False,
             allow_push=False,
-            allow_main_merge=False,
             allow_autonomous_mode=True,
         ),
         agent=AgentConfig(default_runtime="fake-script"),

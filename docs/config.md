@@ -10,7 +10,7 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   `cpu_headroom_pct`, `mem_headroom_pct`, `disk_min_free_mb`,
   `pressure_cpu_pct`, `pressure_mem_pct`
 - `retries`: `default_max_retries`, `backoff_base_seconds`, `backoff_max_seconds`
-- `security`: `allow_network_default`, `allow_push`, `allow_main_merge`,
+- `security`: `allow_network_default`, `allow_push`,
   `allow_autonomous_mode` (supervised → autonomous escalation), `allowed_images`
 - `api`: `host` (default `127.0.0.1`), `port`, `token` (prefer the top-level
   `DEVSANDBOX_API_TOKEN` alias), `max_spec_bytes`, `max_log_bytes`,

@@ -136,10 +136,6 @@ async def test_push_never_allows_main_even_when_enabled(tmp_path: Path) -> None:
     assert "non-devsandbox" in arbitrary.detail
 
 
-def test_main_merge_is_disabled_by_default() -> None:
-    assert SecurityPolicy(_settings()).main_merge_allowed() is False
-
-
 def test_autonomous_escalation_is_policy_controlled() -> None:
     assert SecurityPolicy(_settings()).autonomous_mode_allowed() is True
     assert SecurityPolicy(_settings(allow_autonomous_mode=False)).autonomous_mode_allowed() is False

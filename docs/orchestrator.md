@@ -186,8 +186,10 @@ The orchestrator is the only component that constructs `SandboxRequest` /
 `AgentRunRequest` from `SecurityPolicy`. When a task spec or agent asks for
 more CPU/memory/disk/pids, a longer timeout, or more network access than policy
 allows, the request is clamped to the policy limit and a `POLICY_DENIED` event
-records the denial. Escalation is ignored, never honoured. Main-branch merging
-does not exist in the MVP; `allow_main_merge` must be false.
+records the denial. Escalation is ignored, never honoured. Integration is
+staging-only: there is no main-branch merge path and no setting that can enable
+one. Unknown settings such as a stale `DEVSANDBOX_SECURITY__ALLOW_MAIN_MERGE`
+are rejected at startup by `extra="forbid"` rather than silently ignored.
 
 ## Cost and usage ledger
 

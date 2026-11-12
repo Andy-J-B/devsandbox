@@ -50,10 +50,6 @@ class SecurityPolicy:
         """Return whether pushing to remote is permitted."""
         return self._settings.security.allow_push
 
-    def main_merge_allowed(self) -> bool:
-        """Return whether integrating into the main branch is permitted."""
-        return self._settings.security.allow_main_merge
-
     def autonomous_mode_allowed(self) -> bool:
         """Return whether projects may be escalated to autonomous mode."""
         return self._settings.security.allow_autonomous_mode

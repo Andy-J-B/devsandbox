@@ -108,7 +108,6 @@ def make_settings(
     security = SecurityConfig(
         allow_network_default=allow_network_default,
         allow_push=False,
-        allow_main_merge=False,
         allowed_images=allowed_images or [],
     )
     return DevSandboxSettings(

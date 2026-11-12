@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from devsandbox.common.types import NetworkPolicy, ResourceProfile
 from devsandbox.config.policy import SecurityPolicy
 from devsandbox.config.settings import (
@@ -16,21 +19,21 @@ def test_settings_defaults() -> None:
     settings = DevSandboxSettings()
     assert settings.limits.max_global_concurrency >= 1
     assert settings.retries.default_max_retries >= 0
-    assert settings.security.allow_main_merge is False
     assert settings.security.allow_push is False
 
 
-def test_settings_rejects_negative_retries() -> None:
-    import pytest
-    from pydantic import ValidationError
+def test_settings_rejects_removed_main_merge_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The main-merge path does not exist; the setting must fail closed."""
+    monkeypatch.setenv("DEVSANDBOX_SECURITY__ALLOW_MAIN_MERGE", "true")
+    with pytest.raises(ValidationError, match="allow_main_merge"):
+        DevSandboxSettings(_env_file=None)
 
+
+def test_settings_rejects_negative_retries() -> None:
     with pytest.raises(ValidationError):
         RetriesConfig(default_max_retries=-1)
-
-
-def test_policy_never_allows_main_merge_by_default() -> None:
-    policy = SecurityPolicy(DevSandboxSettings())
-    assert policy.main_merge_allowed() is False
 
 
 def test_policy_allows_push_only_when_configured() -> None:
@@ -73,9 +76,6 @@ def test_effective_resources_clamped_to_policy_maxima() -> None:
 
 
 def test_validation_settings_reject_bad_limits() -> None:
-    import pytest
-    from pydantic import ValidationError
-
     with pytest.raises(ValidationError):
         ValidationSettings(max_output_bytes=0)
     with pytest.raises(ValidationError):
