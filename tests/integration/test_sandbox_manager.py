@@ -14,7 +14,7 @@ import pytest
 from devsandbox.common.types import AttemptId, ResourceProfile
 from devsandbox.config.settings import DevSandboxSettings
 from devsandbox.sandbox.interfaces import NetworkPolicy, SandboxRequest
-from devsandbox.sandbox.manager import DockerSandboxManager
+from devsandbox.sandbox.manager import DockerSandboxManager, container_identity
 
 
 def _docker_available() -> bool:
@@ -157,7 +157,8 @@ async def test_run_isolation_no_host_access(tmp_path: Path) -> None:
     assert result.exit_code == 0
     stdout = result.stdout_path.read_text()
     assert "ISOLATED" in stdout
-    assert "1000" in stdout  # non-root user
+    uid, _ = container_identity()
+    assert str(uid) in stdout  # non-root user matching the workspace owner
 
 
 @pytest.mark.asyncio

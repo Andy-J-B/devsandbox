@@ -10,53 +10,16 @@ are safe to recreate after a crash.
 from __future__ import annotations
 
 import asyncio
-import os
 import shutil
 import uuid
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from ..common.errors import ValidationError
+from ..common.permissions import make_writable
 from ..common.types import RepoHandle
 from ..gitmgr.command import run_git
 from .runner import safe_attempt_id
-
-
-def make_writable(root: str | Path) -> None:
-    """Make ``root`` writable by the container's uid 1000.
-
-    Executable bits are preserved; only write bits are added.  Symlinks are not
-    followed (the git manager already rejects escaping symlinks, but the
-    validator must not create a new escape via ``chmod``).
-    """
-    root_path = Path(root)
-    if not root_path.exists():
-        return
-    for current, dirs, files in os.walk(root_path, followlinks=False):
-        current_path = Path(current)
-        try:
-            mode = current_path.stat().st_mode
-            os.chmod(current_path, mode | 0o777)
-        except OSError:
-            pass
-        for name in dirs:
-            target = current_path / name
-            if target.is_symlink():
-                continue
-            try:
-                mode = target.stat().st_mode
-                os.chmod(target, mode | 0o777)
-            except OSError:
-                pass
-        for name in files:
-            target = current_path / name
-            if target.is_symlink():
-                continue
-            try:
-                mode = target.stat().st_mode
-                os.chmod(target, mode | 0o666)
-            except OSError:
-                pass
 
 
 def scratch_workspace_path(data_root: str | Path, run_id: str) -> Path:

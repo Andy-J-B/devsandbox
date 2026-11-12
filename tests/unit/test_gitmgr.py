@@ -19,7 +19,7 @@ import pytest
 from devsandbox.common.errors import GitError
 from devsandbox.common.types import RepoHandle, RepoSource
 from devsandbox.config.settings import DevSandboxSettings
-from devsandbox.gitmgr.command import GitCommandError, run_git
+from devsandbox.gitmgr.command import GitCommandError, _argv, run_git
 from devsandbox.gitmgr.interfaces import ChangeSet
 from devsandbox.gitmgr.manager import GitManagerImpl
 
@@ -62,6 +62,24 @@ async def _init_project(manager: GitManagerImpl, project_id: str, source: RepoSo
 # ---------------------------------------------------------------------------
 # run_git wrapper (command.py)
 # ---------------------------------------------------------------------------
+
+
+def test_run_git_trusts_extra_safe_directories() -> None:
+    """A workspace used as a local remote must be explicitly trusted.
+
+    Git checks ownership of ``<workspace>/.git`` for local fetches, so both
+    the worktree and its ``.git`` directory are added to ``safe.directory``.
+    """
+    workspace = Path("/tmp/devsandbox-workspace")
+    argv = _argv(
+        ["fetch", str(workspace), "branch"], cwd="/tmp/bare.git", safe_directories=[workspace]
+    )
+
+    safe_directories = [
+        item.split("=", 1)[1] for item in argv if item.startswith("safe.directory=")
+    ]
+    assert str(workspace) in safe_directories
+    assert str(workspace / ".git") in safe_directories
 
 
 def test_run_git_raises_on_bad_ref() -> None:

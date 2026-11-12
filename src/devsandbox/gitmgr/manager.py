@@ -514,12 +514,15 @@ class GitManagerImpl:
         return res.stdout.strip() or None
 
     def _make_container_writable(self, path: Path) -> None:
-        """Make ``path`` writable by the container's uid 1000.
+        """Make ``path`` writable by the sandbox user.
 
-        On Linux the orchestrator may run as root and can ``chown`` the tree.
-        On macOS (and any non-root host) ownership cannot be changed, so the
-        tree is made world-writable instead; the workspace contains only
-        untrusted attempt data, and the canonical bare repo is never touched.
+        Sandboxes run as the orchestrator uid, so a non-root orchestrator
+        already owns the workspace.  A root orchestrator instead chowns the
+        tree to the uid-1000 fallback used by
+        :func:`~devsandbox.sandbox.manager.container_identity`.  If ownership
+        cannot be changed, fall back to permissive write bits; the workspace
+        contains only untrusted attempt data, and the canonical bare repo is
+        never touched.
         """
         if os.geteuid() == 0:
             try:
@@ -676,9 +679,19 @@ class GitManagerImpl:
 
         staging_before = await self.staging_head(repo)
 
-        # Fetch the attempt branch into the bare repo and validate it.
+        # Publish the attempt branch into the bare repo and validate it.  We
+        # push *from* the workspace instead of fetching *from* it: the
+        # workspace is owned by the container uid, and Git's ``-c
+        # safe.directory`` is not honoured by the ``upload-pack`` child that
+        # a local fetch spawns (only protected system/global config is).
+        # Pushing runs receive-pack in the trusted bare repo instead, so it
+        # works when orchestrator and container uids differ (Linux/CI).
         attempt_ref = f"{_ATTEMPT_REF_PREFIX}/{attempt_id}"
-        await run_git(["fetch", ws.path, f"{ws.branch}:{attempt_ref}"], cwd=repo.path)
+        await run_git(
+            ["push", str(repo.path), f"{ws.branch}:{attempt_ref}"],
+            cwd=ws.path,
+            safe_directories=[repo.path],
+        )
         await run_git(["fsck", "--connectivity-only"], cwd=repo.path)
 
         # Scratch integration worktree: fresh clone of the bare repo.
@@ -690,7 +703,11 @@ class GitManagerImpl:
         await run_git(["clone", repo.path, str(worktree_path)])
 
         # Bring the attempt commit into the worktree.
-        await run_git(["fetch", repo.path, f"{attempt_ref}:{attempt_ref}"], cwd=worktree_path)
+        await run_git(
+            ["fetch", repo.path, f"{attempt_ref}:{attempt_ref}"],
+            cwd=worktree_path,
+            safe_directories=[repo.path],
+        )
 
         # Checkout staging (or main if no staging) and merge the attempt.
         # ``git clone`` creates remote-tracking branches (origin/<branch>), not
@@ -729,6 +746,7 @@ class GitManagerImpl:
         await run_git(
             ["fetch", str(worktree_path), f"{staging_after}:{integration_ref}"],
             cwd=repo.path,
+            safe_directories=[worktree_path],
         )
 
         return IntegrationCandidate(

@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 from tests.security.conftest import make_request, read_log
 
+from devsandbox.sandbox.manager import container_identity
+
 pytestmark = pytest.mark.security
 
 
@@ -52,7 +54,8 @@ async def test_container_is_hardened(sandbox: Any, tmp_path: Path) -> None:
     assert any("no-new-privileges" in option for option in (host.get("SecurityOpt") or []))
     assert host.get("ReadonlyRootfs") is True
     assert host.get("PidsLimit")
-    assert attrs["Config"].get("User") == "1000"
+    uid, gid = container_identity()
+    assert attrs["Config"].get("User") == f"{uid}:{gid}"
     assert host.get("NetworkMode") == "none"
     mounts = host.get("Binds") or host.get("Mounts") or []
     assert "docker.sock" not in str(mounts)

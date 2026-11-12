@@ -12,6 +12,7 @@ import asyncio
 import os
 import shlex
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,18 +57,48 @@ def _git_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def _argv(args: list[str], cwd: str | Path | None) -> list[str]:
+def _argv(
+    args: list[str],
+    cwd: str | Path | None,
+    safe_directories: Sequence[str | Path] = (),
+) -> list[str]:
     """Build the argv for a hardened git invocation.
 
     Adds ``-c core.hooksPath=/dev/null`` so hooks found inside an untrusted
     workspace are never executed on the host, plus ``safe.directory`` for the
-    working directory to tolerate dubious-ownership checks.
+    working directory and any additional repositories referenced by the
+    command (for example the source of a ``git fetch``).  Workspaces are owned
+    by the container uid (1000), which differs from the orchestrator uid on
+    Linux; without the extra entries Git rejects every integration with
+    "dubious ownership".
     """
     argv = ["git", "-c", "core.hooksPath=/dev/null"]
+    directories: list[str | Path] = []
     if cwd is not None:
-        argv.extend(["-c", f"safe.directory={cwd}"])
+        directories.append(cwd)
+    directories.extend(safe_directories)
+    for directory in _safe_directory_candidates(directories):
+        argv.extend(["-c", f"safe.directory={directory}"])
     argv.extend(args)
     return argv
+
+
+def _safe_directory_candidates(directories: Sequence[str | Path]) -> list[str]:
+    """Expand repository paths to the exact paths Git ownership checks use.
+
+    For a worktree Git reports the repository as ``<path>/.git`` when it is
+    used as the source of a local ``fetch``, so trusting only ``<path>`` is not
+    enough.  Both are added (the ``.git`` variant is harmless for bare repos).
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+    for directory in directories:
+        for candidate in (Path(directory), Path(directory) / ".git"):
+            value = str(candidate)
+            if value not in seen:
+                seen.add(value)
+                result.append(value)
+    return result
 
 
 async def run_git(
@@ -77,6 +108,8 @@ async def run_git(
     timeout: float = 60.0,
     input_text: str | None = None,
     check: bool = True,
+    *,
+    safe_directories: Sequence[str | Path] = (),
 ) -> GitResult:
     """Run a git command with hardened defaults.
 
@@ -89,6 +122,8 @@ async def run_git(
         check: when True (default), raise :class:`GitCommandError` on a
             non-zero exit; when False, return the :class:`GitResult` so the
             caller can inspect the exit code (e.g. to detect merge conflicts).
+        safe_directories: extra repositories the command accesses (for
+            example a workspace passed as the source of ``git fetch``).
 
     Returns:
         A :class:`GitResult`. ``stderr`` and ``command`` are redacted.
@@ -97,7 +132,7 @@ async def run_git(
         GitCommandError: when ``check`` is True and the command exits
             non-zero or times out.
     """
-    argv = _argv(args, cwd)
+    argv = _argv(args, cwd, safe_directories)
     cwd_str = str(cwd) if cwd is not None else None
 
     try:
