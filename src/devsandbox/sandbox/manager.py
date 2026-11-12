@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -63,6 +64,24 @@ _ATTEMPT_LABEL = "devsandbox.attempt"
 def _container_name(attempt_id: AttemptId) -> str:
     """Deterministic container name for an attempt (00 §8.5)."""
     return f"ds-{attempt_id}"
+
+
+def container_identity() -> tuple[int, int]:
+    """Return the identity sandboxes run as: ``(uid, gid)``.
+
+    Sandboxes bind-mount a workspace created by the orchestrator, and Linux
+    bind mounts preserve the host owner.  Running as a different uid makes the
+    workspace unwritable for non-root orchestrators (for example ``runner`` on
+    CI) and makes Git reject it with "dubious ownership".  Use the
+    orchestrator identity so container and workspace agree; never run as root,
+    so fall back to uid/gid 1000 when the orchestrator itself is root (the git
+    manager chowns workspaces to that uid in that case).
+    """
+    uid = os.getuid()
+    gid = os.getgid()
+    if uid == 0:
+        return 1000, 1000
+    return uid, gid
 
 
 def _parse_created(value: str) -> datetime:
@@ -110,10 +129,10 @@ class DockerSandboxManager:
         await asyncio.to_thread(self._ensure_image, req.image)
 
         # Ensure the workspace directory physically exists on the host before
-        # container creation and that uid 1000 can write to it.  A Linux bind
-        # mount preserves host ownership, so a workspace created by a
-        # different orchestrator uid (for example ``runner`` on CI) would
-        # otherwise be read-only for the container.
+        # container creation and that the sandbox user can write to it.  A
+        # Linux bind mount preserves host ownership, and the container runs as
+        # the orchestrator uid, so this is normally already true; the chmod
+        # keeps root-orchestrated runs (which use uid 1000 containers) working.
         req.workspace_path.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(make_writable, req.workspace_path)
 
@@ -262,11 +281,12 @@ class DockerSandboxManager:
         for name, secret in req.secret_env.items():
             environment[name] = secret.get_secret_value()
 
+        uid, gid = container_identity()
         tmpfs: dict[str, str] = {
             "/tmp": "rw,mode=1777",
             # OpenCode writes config/cache under $HOME; make it owned by the
-            # non-root agent uid instead of the tmpfs default (root:root).
-            "/home/agent": "rw,uid=1000,gid=1000,mode=0700",
+            # non-root sandbox uid instead of the tmpfs default (root:root).
+            "/home/agent": f"rw,uid={uid},gid={gid},mode=0700",
         }
 
         labels: dict[str, str] = {
@@ -288,7 +308,7 @@ class DockerSandboxManager:
             "command": list(req.command),
             "environment": environment,
             "labels": labels,
-            "user": "1000",
+            "user": f"{uid}:{gid}",
             "cap_drop": ["ALL"],
             "security_opt": ["no-new-privileges"],
             "read_only": True,

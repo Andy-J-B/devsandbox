@@ -12,7 +12,11 @@ from devsandbox.common.errors import PolicyViolation
 from devsandbox.common.types import AttemptId, NetworkPolicy, ResourceProfile
 from devsandbox.config.settings import DevSandboxSettings
 from devsandbox.sandbox.interfaces import SandboxRequest
-from devsandbox.sandbox.manager import _TRUNCATION_MARKER, DockerSandboxManager
+from devsandbox.sandbox.manager import (
+    _TRUNCATION_MARKER,
+    DockerSandboxManager,
+    container_identity,
+)
 
 
 class FakeContainer:
@@ -177,6 +181,26 @@ def _make_request(
     )
 
 
+def test_container_identity_uses_orchestrator_uid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sandboxes must run as the uid that owns host-created workspaces."""
+    import devsandbox.sandbox.manager as manager_module
+
+    monkeypatch.setattr(manager_module.os, "getuid", lambda: 1234)
+    monkeypatch.setattr(manager_module.os, "getgid", lambda: 5678)
+    assert container_identity() == (1234, 5678)
+
+
+def test_container_identity_never_uses_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A root orchestrator must still use the non-root uid-1000 fallback."""
+    import devsandbox.sandbox.manager as manager_module
+
+    monkeypatch.setattr(manager_module.os, "getuid", lambda: 0)
+    monkeypatch.setattr(manager_module.os, "getgid", lambda: 0)
+    assert container_identity() == (1000, 1000)
+
+
 def test_build_container_kwargs_enforces_isolation() -> None:
     manager = _make_manager()
     req = _make_request(
@@ -209,10 +233,11 @@ def test_build_container_kwargs_enforces_isolation() -> None:
     # Isolation.
     assert kwargs["cap_drop"] == ["ALL"]
     assert "no-new-privileges" in kwargs["security_opt"]
-    assert kwargs["user"] == "1000"
+    uid, gid = container_identity()
+    assert kwargs["user"] == f"{uid}:{gid}"
     assert kwargs["read_only"] is True
     assert kwargs["tmpfs"]["/tmp"] == "rw,mode=1777"
-    assert kwargs["tmpfs"]["/home/agent"] == "rw,uid=1000,gid=1000,mode=0700"
+    assert kwargs["tmpfs"]["/home/agent"] == f"rw,uid={uid},gid={gid},mode=0700"
 
     # Resource limits.
     assert kwargs["mem_limit"] == "512m"

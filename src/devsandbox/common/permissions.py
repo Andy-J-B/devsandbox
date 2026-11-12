@@ -1,9 +1,9 @@
 """Helpers for sharing host directories with sandbox containers.
 
-Sandbox containers run as uid 1000 (see the sandbox manager), which is usually
-not the uid of the orchestrator process (for example ``runner`` uid 1001 on
-GitHub Actions, or the developer's own uid).  Workspaces are created on the
-host, so they must explicitly be made writable for the container before they
+Sandbox containers run as the orchestrator's non-root uid (see the sandbox
+manager), but a workspace can still be created by a different uid (for example
+when the orchestrator runs as root and uses the uid-1000 fallback).  Workspaces
+are created on the host, so they must explicitly be made writable before they
 are bind-mounted; otherwise a bind mount on Linux preserves host ownership and
 the agent/validator cannot write anything.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 def make_writable(root: str | Path) -> None:
-    """Make ``root`` writable by the container's uid 1000.
+    """Make ``root`` writable by the sandbox user.
 
     Executable bits are preserved; only write bits are added.  Symlinks are not
     followed (the git manager already rejects escaping symlinks, but callers

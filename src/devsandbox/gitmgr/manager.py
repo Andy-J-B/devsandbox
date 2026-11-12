@@ -514,12 +514,15 @@ class GitManagerImpl:
         return res.stdout.strip() or None
 
     def _make_container_writable(self, path: Path) -> None:
-        """Make ``path`` writable by the container's uid 1000.
+        """Make ``path`` writable by the sandbox user.
 
-        On Linux the orchestrator may run as root and can ``chown`` the tree.
-        On macOS (and any non-root host) ownership cannot be changed, so the
-        tree is made world-writable instead; the workspace contains only
-        untrusted attempt data, and the canonical bare repo is never touched.
+        Sandboxes run as the orchestrator uid, so a non-root orchestrator
+        already owns the workspace.  A root orchestrator instead chowns the
+        tree to the uid-1000 fallback used by
+        :func:`~devsandbox.sandbox.manager.container_identity`.  If ownership
+        cannot be changed, fall back to permissive write bits; the workspace
+        contains only untrusted attempt data, and the canonical bare repo is
+        never touched.
         """
         if os.geteuid() == 0:
             try:
