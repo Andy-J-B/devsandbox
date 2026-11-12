@@ -85,7 +85,8 @@ def test_opencode_version_in_image(agent_image: str) -> None:
         text=True,
         check=True,
     )
-    assert result.stdout.strip().startswith("v")
+    expected = os.environ.get("OPENCODE_VERSION", "1.19.5")
+    assert result.stdout.strip().lstrip("v") == expected
 
 
 def test_agent_image_has_expected_tools_and_no_docker(agent_image: str) -> None:
