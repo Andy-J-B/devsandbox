@@ -15,5 +15,8 @@ migrate:
 test:
 	pytest -q
 
+integration:
+	pytest -q -m "integration and not docker"
+
 check:
 	./scripts/check.sh
