@@ -6,13 +6,18 @@ import pytest
 from pydantic import ValidationError
 
 from devsandbox.common.types import NetworkPolicy, ResourceProfile
-from devsandbox.config.policy import SecurityPolicy
+from devsandbox.config.policy import SecurityPolicy, is_digest_pinned
 from devsandbox.config.settings import (
+    AgentConfig,
     DevSandboxSettings,
     RetriesConfig,
+    SecurityConfig,
     ValidationSettings,
 )
 from devsandbox.validation.config import ValidationConfig
+
+DIGEST_IMAGE = "registry.example/devsandbox/agent@sha256:" + "a" * 64
+LOCAL_DIGEST_IMAGE = "sha256:" + "b" * 64
 
 
 def test_settings_defaults() -> None:
@@ -39,6 +44,49 @@ def test_settings_rejects_negative_retries() -> None:
 def test_policy_allows_push_only_when_configured() -> None:
     policy = SecurityPolicy(DevSandboxSettings())
     assert policy.push_allowed() is False
+
+
+def test_agent_image_defaults_and_can_be_overridden() -> None:
+    assert DevSandboxSettings().agent.image == "devsandbox/agent:latest"
+    settings = DevSandboxSettings(agent=AgentConfig(image=DIGEST_IMAGE))
+    assert settings.agent.image == DIGEST_IMAGE
+
+
+def test_digest_pinning_detection() -> None:
+    assert is_digest_pinned(DIGEST_IMAGE)
+    assert is_digest_pinned(LOCAL_DIGEST_IMAGE)
+    assert not is_digest_pinned("devsandbox/agent:latest")
+    assert not is_digest_pinned("registry.example/devsandbox/agent")
+
+
+def test_image_pinning_is_optional_for_local_development() -> None:
+    policy = SecurityPolicy(DevSandboxSettings())
+    assert policy.image_violation("devsandbox/agent:latest") is None
+
+
+def test_image_pinning_rejects_tags_when_required() -> None:
+    settings = DevSandboxSettings(security=SecurityConfig(require_pinned_images=True))
+    policy = SecurityPolicy(settings)
+
+    violation = policy.image_violation("devsandbox/agent:latest")
+
+    assert violation is not None
+    assert "not pinned by digest" in violation
+    assert policy.image_violation(DIGEST_IMAGE) is None
+    assert policy.image_violation(LOCAL_DIGEST_IMAGE) is None
+
+
+def test_image_allowlist_is_checked_before_pinning() -> None:
+    settings = DevSandboxSettings(
+        security=SecurityConfig(
+            require_pinned_images=True,
+            allowed_images=[DIGEST_IMAGE],
+        )
+    )
+    violation = SecurityPolicy(settings).image_violation("evil:latest")
+
+    assert violation is not None
+    assert "not allowed" in violation
 
 
 def test_policy_max_retries_caps_request() -> None:

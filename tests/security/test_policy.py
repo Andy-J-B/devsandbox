@@ -94,6 +94,16 @@ def test_sandbox_rejects_unlisted_image_before_docker(tmp_path: Path) -> None:
         _run(manager, _request(tmp_path, image="evil:img", network=NetworkPolicy(mode="none")))
 
 
+def test_sandbox_rejects_unpinned_image_before_docker(tmp_path: Path) -> None:
+    settings = _settings(require_pinned_images=True)
+    manager = DockerSandboxManager(settings, tmp_path, client=object())
+    with pytest.raises(PolicyViolation, match="not pinned by digest"):
+        _run(
+            manager,
+            _request(tmp_path, image="devsandbox/agent:latest", network=NetworkPolicy(mode="none")),
+        )
+
+
 def _run(manager: DockerSandboxManager, request: SandboxRequest) -> None:
     """Run a request expected to fail policy checks before touching Docker."""
     import asyncio

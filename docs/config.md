@@ -11,13 +11,18 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   `pressure_cpu_pct`, `pressure_mem_pct`
 - `retries`: `default_max_retries`, `backoff_base_seconds`, `backoff_max_seconds`
 - `security`: `allow_network_default`, `allow_push`,
-  `allow_autonomous_mode` (supervised → autonomous escalation), `allowed_images`
+  `allow_autonomous_mode` (supervised → autonomous escalation), `allowed_images`,
+  `require_pinned_images` (reject tag-based agent/validator images; see
+  [images.md](images.md))
 - `api`: `host` (default `127.0.0.1`), `port`, `token` (prefer the top-level
   `DEVSANDBOX_API_TOKEN` alias), `max_spec_bytes`, `max_log_bytes`,
   `max_log_lines`, `expensive_rate_limit_per_minute`, `request_id_header`,
   `run_engine`
-- `agent`: `default_runtime`, `default_provider`, `default_model`, `base_url`,
-  `secret_ref`, `model_budget`
+- `agent`: `default_runtime`, `default_provider`, `default_model`, `image`,
+  `base_url`, `secret_ref`, `model_budget`
+  - `image` is the agent sandbox image (default `devsandbox/agent:latest`).
+    Production deployments should pin it by digest and enable
+    `security.require_pinned_images`; see [images.md](images.md).
   - `default_model` accepts a bare model id (`qwen3:8b`) or a
     `provider/model` reference (`ollama/qwen3:8b`). Use `default_provider` when
     the model id itself contains a slash.

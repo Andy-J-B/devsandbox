@@ -14,10 +14,13 @@
 #   * Agent/validator images must exist on the host daemon before starting:
 #       docker/agent-base/build.sh
 #       docker build -t devsandbox/validator:latest docker/validator-base
+#     Production deployments should pin both images by digest; see
+#     docs/images.md.
 
 services:
   postgres:
-    image: postgres:16
+    # Pinned by digest (postgres:16); update deliberately, see docs/images.md.
+    image: postgres:16@sha256:f9a7b9ebf6f56201f949db745e47bc423c0f0f8294bafe991cc10bf74b029657
     environment:
       POSTGRES_USER: devsandbox
       POSTGRES_PASSWORD: devsandbox
@@ -47,6 +50,12 @@ services:
       DEVSANDBOX_DATA_ROOT: ${DEVSANDBOX_DATA_ROOT:-/var/lib/devsandbox}
       DEVSANDBOX_API__HOST: 0.0.0.0
       DEVSANDBOX_API__PORT: "8000"
+      # Local development defaults to the locally built tags.  For production,
+      # set these to repo@sha256:<digest> references and set
+      # DEVSANDBOX_REQUIRE_PINNED_IMAGES=1.  See docs/images.md.
+      DEVSANDBOX_AGENT__IMAGE: ${DEVSANDBOX_AGENT_IMAGE:-devsandbox/agent:latest}
+      DEVSANDBOX_VALIDATION__IMAGE: ${DEVSANDBOX_VALIDATOR_IMAGE:-devsandbox/validator:latest}
+      DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES: ${DEVSANDBOX_REQUIRE_PINNED_IMAGES:-false}
       DEVSANDBOX_SECURITY__ALLOW_PUSH: "false"
       # Project repos given as local paths must also exist at the same path
       # inside this container (mount their parent explicitly), or use URLs.

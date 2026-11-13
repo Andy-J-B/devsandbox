@@ -120,7 +120,7 @@ class OpenCodeAdapter:
         sandbox: SandboxManager,
         settings: DevSandboxSettings,
         *,
-        image: str = DEFAULT_AGENT_IMAGE,
+        image: str | None = None,
         secret_provider: SecretProvider | None = None,
         usage_limiter: UsageLimiter | None = None,
         prompt_dir: str | Path | None = None,
@@ -128,7 +128,7 @@ class OpenCodeAdapter:
         self._sandbox = sandbox
         self._settings = settings
         self._policy = SecurityPolicy(settings)
-        self._image = image
+        self._image = image or settings.agent.image
         self._secrets = secret_provider or SecretProvider(settings)
         self._usage = usage_limiter or UsageLimiter(settings)
         self._prompt_dir = Path(prompt_dir) if prompt_dir is not None else None

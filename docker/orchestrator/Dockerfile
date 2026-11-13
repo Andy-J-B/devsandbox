@@ -7,7 +7,8 @@
 # daemon through the Docker SDK, and the compose file mounts the socket only
 # into this service.  Never mount docker.sock into agent/validator containers.
 
-FROM python:3.12-slim
+# Base image pinned by digest (python:3.12-slim).
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \

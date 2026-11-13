@@ -122,8 +122,9 @@ class DockerSandboxManager:
                 "allowlist network mode is not supported in the MVP; "
                 "refusing to fall back to full network access"
             )
-        if not self._policy.image_allowed(req.image):
-            raise PolicyViolation(f"image not allowed by policy: {req.image}")
+        violation = self._policy.image_violation(req.image)
+        if violation is not None:
+            raise PolicyViolation(violation)
         resources = self._policy.effective_resources(req.resources)
 
         await asyncio.to_thread(self._ensure_image, req.image)

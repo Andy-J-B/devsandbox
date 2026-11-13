@@ -29,6 +29,11 @@ docker/agent-base/build.sh
 docker build -t devsandbox/validator:latest docker/validator-base
 ```
 
+Local development uses image tags. Production deployments must pin the agent
+and validator images by digest and set
+`DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES=true`; see
+[images.md](images.md) for the upgrade process.
+
 The default database URL is
 `postgresql+asyncpg://devsandbox:devsandbox@localhost:5432/devsandbox`. If your
 PostgreSQL listens elsewhere (a container port mapping, a native install with a

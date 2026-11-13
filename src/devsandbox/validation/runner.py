@@ -257,13 +257,15 @@ class CheckRunner:
                 FailureKind.INFRA_ERROR,
                 "allowlist network mode is not supported by the MVP sandbox",
             )
-        if self._policy is not None and not self._policy.image_allowed(self._config.image):
-            return self._error_result(
-                check,
-                display,
-                FailureKind.INFRA_ERROR,
-                f"validation image not allowed by policy: {self._config.image}",
-            )
+        if self._policy is not None:
+            violation = self._policy.image_violation(self._config.image)
+            if violation is not None:
+                return self._error_result(
+                    check,
+                    display,
+                    FailureKind.INFRA_ERROR,
+                    f"validation {violation}",
+                )
 
         resources = self._config.resources
         if self._policy is not None:

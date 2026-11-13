@@ -60,7 +60,7 @@ class FakeScriptAdapter:
         sandbox: SandboxManager,
         settings: DevSandboxSettings,
         *,
-        image: str = "devsandbox/agent:latest",
+        image: str | None = None,
         mode: FakeAgentMode = "success",
         extra_args: Sequence[str] = (),
         secret_env: dict[str, SecretStr] | None = None,
@@ -70,7 +70,7 @@ class FakeScriptAdapter:
             raise ValueError(f"unknown fake agent mode: {mode}")
         self._sandbox = sandbox
         self._policy = SecurityPolicy(settings)
-        self._image = image
+        self._image = image or settings.agent.image
         self._mode = mode
         self._extra_args = list(extra_args)
         self._secret_env = dict(secret_env or {})

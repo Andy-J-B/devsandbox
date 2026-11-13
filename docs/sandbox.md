@@ -59,6 +59,9 @@ not active or that exceed `max_age_seconds` (janitor, plan 08).
   checks run without network access. Build it with
   `docker build -t devsandbox/validator:latest docker/validator-base`.
 - `ensure_image(image)` pulls the image when it is not present locally.
+- `security.require_pinned_images` rejects tag references before any Docker
+  call; production deployments should pin the agent/validator images by digest
+  and allowlist them. See [images.md](images.md) for the upgrade process.
 
 ## Testing
 

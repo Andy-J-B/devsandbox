@@ -2,8 +2,23 @@
 
 from __future__ import annotations
 
+import re
+
 from ..common.types import NetworkPolicy, ResourceProfile
 from .settings import DevSandboxSettings
+
+# A digest reference is a registry manifest reference (``repo@sha256:<64 hex>``)
+# or a local image ID (``sha256:<64 hex>``).  Tags, including ``:latest``, are
+# mutable and therefore not pinned.
+_DIGEST_IMAGE_RE = re.compile(
+    r"^(?:[^\s@]+@sha256:[0-9a-f]{64}|sha256:[0-9a-f]{64})$",
+    re.IGNORECASE,
+)
+
+
+def is_digest_pinned(image: str) -> bool:
+    """Return whether ``image`` is content-addressed rather than tag-based."""
+    return bool(_DIGEST_IMAGE_RE.match(image.strip()))
 
 
 class SecurityPolicy:
@@ -40,11 +55,27 @@ class SecurityPolicy:
         )
 
     def image_allowed(self, image: str) -> bool:
-        """Return whether ``image`` is permitted by policy."""
+        """Return whether ``image`` is permitted by the allowlist."""
         allowed = self._settings.security.allowed_images
         if not allowed:
             return True
         return image in allowed
+
+    def image_violation(self, image: str) -> str | None:
+        """Return a policy violation for ``image``, or ``None`` when allowed.
+
+        Enforces both the optional allowlist and the optional digest-pinning
+        requirement.  Callers fail closed on any non-``None`` result *before*
+        touching Docker.
+        """
+        if not self.image_allowed(image):
+            return f"image not allowed by policy: {image}"
+        if self._settings.security.require_pinned_images and not is_digest_pinned(image):
+            return (
+                f"image is not pinned by digest: {image} "
+                "(set security.require_pinned_images=false only for local development)"
+            )
+        return None
 
     def push_allowed(self) -> bool:
         """Return whether pushing to remote is permitted."""

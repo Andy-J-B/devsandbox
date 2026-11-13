@@ -176,6 +176,10 @@ staging branch there (`git clone "$MIRROR" project-review`).
   `postgresql+asyncpg://devsandbox:devsandbox@localhost:5432/devsandbox`.
 - Agent model defaults to OpenCode; see
   [`agents-opencode.md`](agents-opencode.md) for free-model options.
+- Agent/validator images default to local tags. For production, pin them by
+  digest (`DEVSANDBOX_AGENT__IMAGE`, `DEVSANDBOX_VALIDATION__IMAGE`) and set
+  `DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES=true`; see
+  [`images.md`](images.md).
 - Full settings list: [`config.md`](config.md).
 
 ## Tests and checks

@@ -271,6 +271,29 @@ async def test_policy_narrows_network_and_resources(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_unpinned_validation_image_is_rejected_before_docker(tmp_path: Path) -> None:
+    settings = DevSandboxSettings(security=SecurityConfig(require_pinned_images=True))
+    sandbox = FakeSandboxManager()
+    runner = _runner(
+        sandbox,
+        tmp_path,
+        config=ValidationConfig(image="devsandbox/validator:latest"),
+        policy=SecurityPolicy(settings),
+    )
+
+    result = await runner.run_check(
+        CheckSpec(name="tests", run="pytest -q", kind="test"),
+        tmp_path,
+        attempt_id="a1",
+    )
+
+    assert result.status == "error"
+    assert result.failure_kind is FailureKind.INFRA_ERROR
+    assert "not pinned by digest" in result.reason
+    assert sandbox.calls == []
+
+
+@pytest.mark.asyncio
 async def test_optional_checks_can_be_short_circuited(tmp_path: Path) -> None:
     sandbox = FakeSandboxManager()
     sandbox.queue_result(_result(tmp_path, exit_code=1))

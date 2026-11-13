@@ -294,11 +294,15 @@ asserts it satisfies the Protocol and registry lookup.
 
 ## Agent image
 
-`docker/agent-base/Dockerfile` builds on `node:22-bookworm-slim` and adds
-Python 3, pip, git, build-essential, ripgrep, curl, and
+`docker/agent-base/Dockerfile` builds on `node:22-bookworm-slim` (pinned by
+digest) and adds Python 3, pip, git, build-essential, ripgrep, curl, and
 `opencode-ai@${OPENCODE_VERSION}` (default `1.19.5`). It runs as non-root
 `agent` uid 1000, has no Docker CLI/socket, sudo, SSH keys, or cloud
 credentials, and its root filesystem is read-only under the sandbox manager.
+
+Select the runtime image with `DEVSANDBOX_AGENT__IMAGE` (or `agent.image` in
+`devsandbox.toml`). See [images.md](images.md) for digest pinning and the
+upgrade process.
 
 ```bash
 docker/agent-base/build.sh             # build + version/tool smoke tests

@@ -61,6 +61,11 @@ class SecurityConfig(BaseModel):
     allow_push: bool = False
     allow_autonomous_mode: bool = True
     allowed_images: list[str] = Field(default_factory=list)
+    # When true, every agent/validator image must be content-addressed
+    # (``repo@sha256:<digest>`` or ``sha256:<image-id>``).  Off for local
+    # development where images are built and tagged locally; enable it in
+    # deployments that pull from a registry.  See docs/images.md.
+    require_pinned_images: bool = False
 
 
 class ModelBudget(BaseModel):
@@ -84,6 +89,9 @@ class AgentConfig(BaseModel):
     default_runtime: str = "opencode"
     default_provider: str | None = None
     default_model: str | None = None
+    # Agent sandbox image.  Local development uses the built tag; production
+    # deployments should set a digest and enable security.require_pinned_images.
+    image: str = "devsandbox/agent:latest"
     base_url: str | None = None
     secret_ref: str | None = None
     model_budget: ModelBudget = Field(default_factory=ModelBudget)
