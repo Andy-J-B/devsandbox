@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import socket
 import uuid
 from collections.abc import Awaitable, Callable
@@ -111,6 +112,41 @@ _ACTIVE_TASK_STATUSES: frozenset[TaskStatus] = frozenset(
     }
 )
 
+# SQLSTATE classes for connection exceptions (08xxx) and the server-side
+# shutdown/startup states PostgreSQL reports while it is restarting.
+_TRANSIENT_SQLSTATES = frozenset(
+    {
+        "08000",
+        "08001",
+        "08003",
+        "08004",
+        "08006",
+        "57P01",  # admin_shutdown
+        "57P02",  # crash_shutdown
+        "57P03",  # cannot_connect_now ("the database system is starting up")
+    }
+)
+_TRANSIENT_DB_MESSAGES = (
+    "starting up",
+    "shutting down",
+    "connection reset",
+    "connection refused",
+    "connection was closed",
+    "server closed the connection",
+    "unexpected connection_lost",
+)
+_TRANSIENT_OS_ERRNOS = frozenset(
+    {
+        errno.ECONNABORTED,
+        errno.ECONNREFUSED,
+        errno.ECONNRESET,
+        errno.EHOSTUNREACH,
+        errno.ENETUNREACH,
+        errno.EPIPE,
+        errno.ETIMEDOUT,
+    }
+)
+
 
 def is_transient_db_error(exc: BaseException) -> bool:
     """Return whether ``exc`` looks like a recoverable database disconnect.
@@ -119,10 +155,28 @@ def is_transient_db_error(exc: BaseException) -> bool:
     restart can still invalidate a connection mid-query.  The engine retries
     these errors instead of stopping permanently; programming errors and
     constraint violations are not transient.
+
+    asyncpg can surface a failed connect as a bare ``OSError`` (for example
+    ``OSError("Multiple exceptions: ... Connect call failed ...")``) before
+    SQLAlchemy wraps it.  Treat network-level ``OSError`` as transient and
+    let storage, permission, and other local errors surface immediately.
     """
     if isinstance(exc, (OperationalError, DisconnectionError, ConnectionError)):
         return True
-    return isinstance(exc, DBAPIError) and bool(getattr(exc, "connection_invalidated", False))
+    if isinstance(exc, OSError):
+        # A bare OSError with no errno comes from asyncio's combined
+        # "Multiple exceptions: ... Connect call failed ..." path.
+        return exc.errno is None or exc.errno in _TRANSIENT_OS_ERRNOS
+    if isinstance(exc, DBAPIError):
+        if getattr(exc, "connection_invalidated", False):
+            return True
+        original = getattr(exc, "orig", None)
+        sqlstate = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+        if sqlstate in _TRANSIENT_SQLSTATES:
+            return True
+        message = str(original or exc).lower()
+        return any(hint in message for hint in _TRANSIENT_DB_MESSAGES)
+    return False
 
 
 class SimulatedCrash(BaseException):

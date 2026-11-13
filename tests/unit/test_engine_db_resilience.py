@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 
 import pytest
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError, OperationalError
 
 from devsandbox.orchestrator.engine import OrchestratorEngine, is_transient_db_error
 from devsandbox.orchestrator.models import OrchestratorConfig
@@ -35,7 +36,18 @@ def _engine(*, base: float = 0.0, maximum: float = 4.0) -> tuple[OrchestratorEng
 def test_modelled_operational_errors_are_transient() -> None:
     assert is_transient_db_error(_disconnect())
     assert is_transient_db_error(ConnectionResetError("connection reset"))
+    assert is_transient_db_error(
+        OSError("Multiple exceptions: Connect call failed ('::1', 5432, 0, 0)")
+    )
+    assert is_transient_db_error(
+        DBAPIError("select 1", {}, Exception("the database system is starting up"))
+    )
+    assert not is_transient_db_error(
+        DBAPIError("select 1", {}, Exception("syntax error at or near SELECT"))
+    )
     assert not is_transient_db_error(ValueError("bad input"))
+    assert not is_transient_db_error(OSError(errno.ENOSPC, "No space left on device"))
+    assert not is_transient_db_error(OSError(errno.ENOENT, "missing"))
 
 
 @pytest.mark.asyncio

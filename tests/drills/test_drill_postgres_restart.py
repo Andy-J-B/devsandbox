@@ -132,7 +132,9 @@ async def test_engine_survives_a_postgresql_restart(
             # Give the loop time to complete a tick against the restarted server.
             await asyncio.sleep(1.0)
 
-            assert not engine_task.done(), "engine exited instead of reconnecting"
+            assert not engine_task.done(), (
+                f"engine exited instead of reconnecting: {engine_task.exception()!r}"
+            )
             assert engine._lease_acquired, "engine lost its lease across the restart"
             async with maker() as session:
                 await session.execute(text("select 1"))
