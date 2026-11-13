@@ -285,6 +285,17 @@ async def test_policy_clamps_resources_and_network(tmp_path: Path) -> None:
     assert call.network.mode == "none"
 
 
+async def test_run_refuses_unconfigured_model(tmp_path: Path) -> None:
+    workspace, workspace_path = make_workspace(tmp_path)
+    adapter, sandbox = _adapter(tmp_path)
+    req = make_request(workspace, model=ModelConfig(configured=False))
+
+    with pytest.raises(ConfigError, match="DEVSANDBOX_AGENT__DEFAULT_MODEL"):
+        await adapter.run(req)
+    assert sandbox.calls == []
+    assert not (workspace_path.parent / "prompts").exists()
+
+
 async def test_prompt_dir_inside_workspace_is_rejected(tmp_path: Path) -> None:
     workspace, workspace_path = make_workspace(tmp_path)
     adapter, sandbox = _adapter(tmp_path, prompt_dir=workspace_path / "audit")

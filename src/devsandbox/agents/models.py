@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ..common.errors import BudgetExceeded
+from ..common.errors import BudgetExceeded, ConfigError
 from ..common.time import utcnow
 from ..common.types import ModelConfig, TokenUsage
 from ..config.settings import DevSandboxSettings
@@ -163,9 +163,14 @@ def model_config_from_settings(settings: DevSandboxSettings) -> ModelConfig:
     """
     agent = settings.agent
     provider = agent.default_provider
-    model_id = agent.default_model
+    model_id = (agent.default_model or "").strip() or None
     if model_id and "/" in model_id:
         prefix, remainder = model_id.split("/", 1)
+        if not prefix or not remainder:
+            raise ConfigError(
+                "agent.default_model must be 'provider/model' with non-empty "
+                f"segments: {agent.default_model!r}"
+            )
         if provider is None:
             provider = prefix
             model_id = remainder
@@ -179,6 +184,7 @@ def model_config_from_settings(settings: DevSandboxSettings) -> ModelConfig:
         secret_ref=agent.secret_ref,
         max_tokens=agent.model_budget.max_tokens,
         max_requests=agent.model_budget.max_requests,
+        configured=bool(model_id),
     )
 
 

@@ -43,8 +43,24 @@ Record the observed RSS growth and CPU percentage in the release notes or
 
 Use this when you need to verify behaviour against the real host daemon.
 
-1. Start a supervised project and wait until a task is running (or submit a
-   small fixture project).
+### Preflight
+
+The drill only tests the daemon if the agent itself works. Before restarting
+Docker, confirm a normal run reaches a completed task:
+
+1. Configure a real model in the `serve` environment
+   (`DEVSANDBOX_AGENT__DEFAULT_MODEL`, plus `BASE_URL`/`SECRET_REF` when
+   needed) and confirm the container can reach it.
+2. Submit a small project and let one task complete without restarting
+   anything.
+3. If the task fails as `agent_error`, fix the model/auth configuration first.
+   A failure in seconds with no `infra_error` event means Docker was never the
+   cause.
+
+### Procedure
+
+1. Submit a fresh supervised project and wait until a task is running (or use
+   the project from the preflight).
 2. Watch the orchestrator log and note the active attempt id.
 3. Restart the daemon:
    - Linux: `sudo systemctl restart docker`

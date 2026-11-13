@@ -312,6 +312,10 @@ class ModelConfig(BaseModel):
     secret_ref: str | None = None
     max_tokens: int | None = None
     max_requests: int | None = None
+    # False when no model was configured explicitly.  Runtimes that need a
+    # real model must refuse to launch instead of substituting a placeholder
+    # id that the provider does not recognize.
+    configured: bool = True
 
     @property
     def model_id(self) -> str:

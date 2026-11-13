@@ -23,9 +23,12 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   - `image` is the agent sandbox image (default `devsandbox/agent:latest`).
     Production deployments should pin it by digest and enable
     `security.require_pinned_images`; see [images.md](images.md).
-  - `default_model` accepts a bare model id (`qwen3:8b`) or a
-    `provider/model` reference (`ollama/qwen3:8b`). Use `default_provider` when
-    the model id itself contains a slash.
+  - `default_model` is required for a live agent run. It accepts a bare model id
+    (`qwen3:8b`) or a `provider/model` reference (`ollama/qwen3:8b`). Use
+    `default_provider` when the model id itself contains a slash. There is no
+    implicit model fallback: if it is unset, the OpenCode adapter refuses to
+    launch and records a clear configuration error instead of sending a
+    nonexistent `opencode/opencode` model id to the provider.
   - `base_url` points an OpenAI-compatible endpoint at a custom server; for a
     local Ollama instance use `http://host.docker.internal:11434/v1` on Docker
     Desktop (or the host bridge address on Linux).

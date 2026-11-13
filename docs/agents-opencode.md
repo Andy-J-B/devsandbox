@@ -226,9 +226,18 @@ models and leaves price lookup to the reporting layer.
 ## Model config and budget
 
 `ModelConfig` (`common/types.py`) fields: `provider`, `model`, `base_url`,
-`secret_ref`, `max_tokens`, `max_requests`. `name` is a backwards-compatible
-fallback for the model id. `ModelConfig.reference` returns
+`secret_ref`, `max_tokens`, `max_requests`, `configured`. `name` is a
+backwards-compatible fallback for the model id. `ModelConfig.reference` returns
 `provider/model`.
+
+`agent.default_model` is required for a live run. When it is unset,
+`model_config_from_settings` marks the model as unconfigured and
+`OpenCodeAdapter.run` raises `ConfigError` before writing the prompt or
+creating a container. Do not substitute a placeholder model id such as
+`opencode/opencode`; the provider rejects it with an opaque
+`UnknownError`/`Model is unavailable` response. Configure
+`DEVSANDBOX_AGENT__DEFAULT_MODEL` (and `base_url`/`secret_ref` when needed) in
+the `serve` process environment.
 
 `UsageLimiter` (`agents/models.py`) checks
 `settings.agent.model_budget` before every run and records usage afterwards.

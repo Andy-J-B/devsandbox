@@ -6,7 +6,7 @@ import pytest
 from tests.agent_helpers import make_settings
 
 from devsandbox.agents.models import UsageLimiter, UsageSnapshot, model_config_from_settings
-from devsandbox.common.errors import BudgetExceeded
+from devsandbox.common.errors import BudgetExceeded, ConfigError
 from devsandbox.common.types import ModelConfig, TokenUsage
 
 MODEL = ModelConfig(provider="openrouter", model="free/model")
@@ -92,6 +92,22 @@ def test_model_config_keeps_model_only() -> None:
     assert model.provider is None
     assert model.model_id == "qwen3:8b"
     assert model.reference == "opencode/qwen3:8b"
+    assert model.configured is True
+
+
+def test_model_config_flags_missing_model_as_unconfigured() -> None:
+    model = model_config_from_settings(make_settings())
+    assert model.configured is False
+    assert model.reference == "opencode/opencode"
+
+
+def test_model_config_rejects_empty_provider_or_model_segment() -> None:
+    settings = make_settings()
+    settings = settings.model_copy(
+        update={"agent": settings.agent.model_copy(update={"default_model": "opencode/"})}
+    )
+    with pytest.raises(ConfigError):
+        model_config_from_settings(settings)
 
 
 def test_injected_store_and_cost_recorder_are_used() -> None:

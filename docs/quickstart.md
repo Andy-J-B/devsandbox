@@ -285,7 +285,8 @@ Agent containers never receive the Docker socket.
   `http://host.docker.internal:11434/v1/models` is reachable from a container.
 - **OpenCode uses the wrong model** — set `DEVSANDBOX_AGENT__DEFAULT_MODEL` and
   `DEVSANDBOX_AGENT__BASE_URL` in the `serve` process environment, not only in
-  the project spec. A missing model configuration falls back to the OpenCode
-  default.
+  the project spec. There is no implicit model fallback: a missing
+  `default_model` makes the OpenCode adapter fail before launching a container.
+  Look for `no agent model is configured` in the task failure payload.
 - **The staging branch is missing from your source repo** — fetch it from the
   bare mirror as shown in section 7.

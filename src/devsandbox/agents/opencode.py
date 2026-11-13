@@ -135,6 +135,13 @@ class OpenCodeAdapter:
 
     async def run(self, req: AgentRunRequest) -> AgentRunResult:
         """Run OpenCode for ``req`` and return an untrusted result."""
+        if not req.model.configured:
+            raise ConfigError(
+                "no agent model is configured; set "
+                "DEVSANDBOX_AGENT__DEFAULT_MODEL (for example "
+                "'ollama/qwen3:8b' or 'opencode/deepseek-v4.1-flash-free') "
+                "and restart the orchestrator"
+            )
         project_id = resolve_project_id(req)
         budget_key = project_id or req.task.id
         # Budget is checked before any side effect (including writing files).
