@@ -20,3 +20,6 @@ integration:
 
 check:
 	./scripts/check.sh
+
+drills:
+	./scripts/drills.sh

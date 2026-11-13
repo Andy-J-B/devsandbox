@@ -23,6 +23,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         root / "e2e": "e2e",
         root / "security": "security",
         root / "contract": "contract",
+        root / "drills": "drill",
     }
     for item in items:
         path = Path(str(item.path)).resolve()
@@ -80,9 +81,12 @@ def postgres_container():
     if os.environ.get("DEVSANDBOX_TEST_DATABASE_URL"):
         return None
     try:
-        from testcontainers.postgresql import PostgresContainer
+        try:
+            from testcontainers.community.postgres import PostgresContainer
+        except ImportError:  # pragma: no cover - older testcontainers layout
+            from testcontainers.postgresql import PostgresContainer
 
-        container = PostgresContainer("postgres:16")
+        container = PostgresContainer("postgres:16", driver="asyncpg")
         container.start()
         return container
     except Exception:

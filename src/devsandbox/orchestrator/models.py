@@ -27,6 +27,10 @@ class OrchestratorConfig(BaseModel):
     tick_seconds: float = 1.0
     idle_sleep_seconds: float = 0.1
     shutdown_timeout_seconds: float = 30.0
+    # Retry transient database disconnects (for example a PostgreSQL restart)
+    # instead of terminating the engine loop.
+    db_reconnect_base_seconds: float = 1.0
+    db_reconnect_max_seconds: float = 30.0
 
     # Retries / circuit breakers ------------------------------------------
     max_infra_failures: int = 3
@@ -58,6 +62,10 @@ class OrchestratorConfig(BaseModel):
             raise ValueError("lease_ttl_seconds must be >= 1")
         if self.tick_seconds <= 0 or self.idle_sleep_seconds <= 0:
             raise ValueError("sleep intervals must be > 0")
+        if self.db_reconnect_base_seconds < 0 or self.db_reconnect_max_seconds < 0:
+            raise ValueError("database reconnect backoff must be >= 0")
+        if self.db_reconnect_max_seconds < self.db_reconnect_base_seconds:
+            raise ValueError("db_reconnect_max_seconds must be >= db_reconnect_base_seconds")
         if self.max_infra_failures < 0 or self.max_total_attempts < 1:
             raise ValueError("circuit breaker values must be positive")
         if self.max_replans < 0:

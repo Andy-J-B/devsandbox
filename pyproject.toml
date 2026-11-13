@@ -59,6 +59,7 @@ markers = [
     "slow: tests that take noticeably longer than the unit suite",
     "security: security hardening and isolation tests",
     "contract: cross-implementation Protocol contract tests",
+    "drill: operational drills (opt-in, set DEVSANDBOX_DRILLS=1)",
 ]
 
 [tool.ruff]

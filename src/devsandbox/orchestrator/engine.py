@@ -15,6 +15,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any
 
+from sqlalchemy.exc import DBAPIError, DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..agents.interfaces import AgentAdapter, AgentRunRequest, AgentRunResult
@@ -109,6 +110,19 @@ _ACTIVE_TASK_STATUSES: frozenset[TaskStatus] = frozenset(
         TaskStatus.INTEGRATING,
     }
 )
+
+
+def is_transient_db_error(exc: BaseException) -> bool:
+    """Return whether ``exc`` looks like a recoverable database disconnect.
+
+    ``pool_pre_ping`` handles stale connections at checkout, but a server
+    restart can still invalidate a connection mid-query.  The engine retries
+    these errors instead of stopping permanently; programming errors and
+    constraint violations are not transient.
+    """
+    if isinstance(exc, (OperationalError, DisconnectionError, ConnectionError)):
+        return True
+    return isinstance(exc, DBAPIError) and bool(getattr(exc, "connection_invalidated", False))
 
 
 class SimulatedCrash(BaseException):
@@ -312,15 +326,21 @@ class OrchestratorEngine:
             return min(deadlines) if deadlines else 0.0
 
     async def run_forever(self) -> None:
-        """Run until :meth:`request_shutdown` is called."""
-        await self.acquire_lease()
-        await self._recover()
-        await self._emit_engine_event(events.ENGINE_STARTED)
+        """Run until :meth:`request_shutdown` is called.
+
+        Transient database disconnects are retried with backoff.  A PostgreSQL
+        restart therefore pauses the loop instead of terminating it; the pool
+        reconnects on the next checkout.
+        """
+        await self._with_db_reconnect(self.acquire_lease, description="acquire lease")
+        await self._with_db_reconnect(self._recover, description="recover in-flight work")
+        await self._with_db_reconnect(
+            lambda: self._emit_engine_event(events.ENGINE_STARTED),
+            description="emit engine started",
+        )
         try:
             while not self._shutdown:
-                await self._refresh_lease()
-                launched = await self._round()
-                await self._finalize_projects()
+                launched = await self._with_db_reconnect(self._tick, description="scheduling round")
                 if launched:
                     await self._sleep(0)
                     continue
@@ -329,6 +349,39 @@ class OrchestratorEngine:
                     await asyncio.wait_for(self._wake.wait(), timeout=self.config.tick_seconds)
         finally:
             await self.shutdown()
+
+    async def _tick(self) -> int:
+        """Run one durable engine tick (lease refresh + round + finalization)."""
+        await self._refresh_lease()
+        launched = await self._round()
+        await self._finalize_projects()
+        return launched
+
+    async def _with_db_reconnect(
+        self,
+        operation: Callable[[], Awaitable[Any]],
+        *,
+        description: str,
+    ) -> Any:
+        """Run a database-dependent operation, retrying transient disconnects."""
+        delay = max(self.config.db_reconnect_base_seconds, 0.01)
+        while True:
+            try:
+                return await operation()
+            except Exception as exc:
+                if not is_transient_db_error(exc) or self._shutdown:
+                    raise
+                _log.warning(
+                    "transient database error; retrying",
+                    operation=description,
+                    delay_seconds=round(delay, 3),
+                    error=str(exc),
+                )
+                await self._sleep(delay)
+                delay = min(
+                    max(delay * 2.0, 0.01),
+                    self.config.db_reconnect_max_seconds,
+                )
 
     async def request_shutdown(self) -> None:
         """Stop launching new attempts."""
@@ -348,8 +401,20 @@ class OrchestratorEngine:
                 task.cancel()
             if still_running:
                 await asyncio.gather(*still_running, return_exceptions=True)
-        await self._emit_engine_event(events.ENGINE_STOPPED)
-        await self.release_lease()
+        # A database that is still down must not turn a clean shutdown into a
+        # crash.  Log and continue; the lease will expire on its own.
+        try:
+            await self._emit_engine_event(events.ENGINE_STOPPED)
+        except Exception as exc:
+            if not is_transient_db_error(exc):
+                raise
+            _log.error("could not emit engine stopped event", error=str(exc))
+        try:
+            await self.release_lease()
+        except Exception as exc:
+            if not is_transient_db_error(exc):
+                raise
+            _log.error("could not release lease during shutdown", error=str(exc))
 
     # ================================================================== rounds
     async def run_once(self) -> int:

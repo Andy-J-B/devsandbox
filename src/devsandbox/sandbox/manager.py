@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import os
 import threading
 from datetime import datetime
@@ -134,7 +135,7 @@ class DockerSandboxManager:
         # Linux bind mount preserves host ownership, and the container runs as
         # the orchestrator uid, so this is normally already true; the chmod
         # keeps root-orchestrated runs (which use uid 1000 containers) working.
-        req.workspace_path.mkdir(parents=True, exist_ok=True)
+        self._prepare_directory(req.workspace_path, "workspace")
         await asyncio.to_thread(make_writable, req.workspace_path)
 
         container = await asyncio.to_thread(
@@ -142,7 +143,7 @@ class DockerSandboxManager:
         )
         container_id = container.id
         log_dir = self._data_root / "logs" / str(req.attempt_id)
-        log_dir.mkdir(parents=True, exist_ok=True)
+        self._prepare_directory(log_dir, "log")
         stdout_path = log_dir / "stdout.log"
         stderr_path = log_dir / "stderr.log"
 
@@ -167,6 +168,7 @@ class DockerSandboxManager:
 
         stop_sampling = threading.Event()
         peak_usage: list[int] = [0]
+        stream_errors: list[BaseException] = []
         stream_task = asyncio.create_task(
             asyncio.to_thread(
                 self._stream_logs,
@@ -174,6 +176,7 @@ class DockerSandboxManager:
                 stdout_path,
                 stderr_path,
                 self._log_cap_bytes,
+                stream_errors,
             )
         )
         sampler_task = asyncio.create_task(
@@ -221,6 +224,12 @@ class DockerSandboxManager:
         if not self._keep_on_failure:
             await asyncio.to_thread(self._remove_container_ignoring_errors, container)
 
+        for error in stream_errors:
+            if self._is_storage_full(error):
+                raise SandboxError(
+                    f"disk full while writing logs for {req.attempt_id}: {error}"
+                ) from error
+
         return SandboxResult(
             container_id=container_id,
             exit_code=exit_code,
@@ -234,6 +243,22 @@ class DockerSandboxManager:
         )
 
     # -- docker helpers -----------------------------------------------------
+
+    @staticmethod
+    def _is_storage_full(error: BaseException) -> bool:
+        """Return whether ``error`` indicates a full or over-quota filesystem."""
+        return isinstance(error, OSError) and error.errno in {errno.ENOSPC, errno.EDQUOT}
+
+    @classmethod
+    def _prepare_directory(cls, path: Path, description: str) -> None:
+        """Create ``path`` and translate storage errors into ``SandboxError``."""
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            hint = " (disk full or quota exceeded)" if cls._is_storage_full(exc) else ""
+            raise SandboxError(
+                f"failed to prepare {description} directory {path}{hint}: {exc}"
+            ) from exc
 
     def _ensure_image(self, image: str) -> None:
         """Pull ``image`` if it is not already present locally."""
@@ -335,11 +360,14 @@ class DockerSandboxManager:
         stdout_path: Path,
         stderr_path: Path,
         cap_bytes: int,
+        errors: list[BaseException] | None = None,
     ) -> None:
         """Demux an attached container socket into the two log files.
 
         Output is passed through :func:`redact` and each file is capped at
-        ``cap_bytes`` with a truncation marker.
+        ``cap_bytes`` with a truncation marker.  Storage errors are appended to
+        ``errors`` so the caller can fail the run instead of silently losing
+        logs (for example when the data root fills up).
         """
         stdout_written = 0
         stderr_written = 0
@@ -367,6 +395,11 @@ class DockerSandboxManager:
                         stderr_written = self._write_to_cap(
                             stderr_file, encoded, stderr_written, cap_bytes
                         )
+        except OSError as exc:
+            if errors is not None:
+                errors.append(exc)
+            else:
+                raise
         finally:
             with contextlib.suppress(Exception):
                 sock.close()

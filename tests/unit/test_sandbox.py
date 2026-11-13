@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from pydantic import SecretStr
 
-from devsandbox.common.errors import PolicyViolation
+from devsandbox.common.errors import PolicyViolation, SandboxError
 from devsandbox.common.types import AttemptId, NetworkPolicy, ResourceProfile
 from devsandbox.config.settings import DevSandboxSettings
 from devsandbox.sandbox.interfaces import SandboxRequest
@@ -489,6 +491,33 @@ def test_stream_logs_redacts_and_demuxes(monkeypatch: pytest.MonkeyPatch, tmp_pa
         monkeypatch.undo()
 
     assert any("sk-1234567890abcdef" in s for s in seen)
+
+
+def test_prepare_directory_wraps_disk_full_errors(tmp_path: Path) -> None:
+    error = OSError(errno.ENOSPC, "No space left on device")
+    with (
+        patch.object(Path, "mkdir", side_effect=error),
+        pytest.raises(SandboxError, match="disk full or quota exceeded"),
+    ):
+        DockerSandboxManager._prepare_directory(tmp_path / "logs", "log")
+
+
+def test_stream_logs_records_storage_errors(tmp_path: Path) -> None:
+    manager = _make_manager()
+    errors: list[BaseException] = []
+    error = OSError(errno.ENOSPC, "No space left on device")
+
+    with patch.object(Path, "open", side_effect=error):
+        manager._stream_logs(
+            FakeSocket([]),
+            tmp_path / "stdout.log",
+            tmp_path / "stderr.log",
+            cap_bytes=1024,
+            errors=errors,
+        )
+
+    assert errors == [error]
+    assert DockerSandboxManager._is_storage_full(error)
 
 
 if __name__ == "__main__":
