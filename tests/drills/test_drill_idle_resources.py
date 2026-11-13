@@ -71,6 +71,12 @@ async def test_idle_engine_does_not_spin_or_leak(drill_env: object) -> None:
 
         growth_mb = (rss_end - rss_start) / (1024 * 1024)
         cpu_pct = cpu_used / elapsed * 100.0
+        print(
+            f"idle drill: window={elapsed:.1f}s "
+            f"rss_start={rss_start / (1024 * 1024):.1f}MiB "
+            f"rss_end={rss_end / (1024 * 1024):.1f}MiB "
+            f"growth={growth_mb:.1f}MiB cpu={cpu_pct:.1f}%"
+        )
 
         assert not engine_task.done(), "idle engine exited unexpectedly"
         assert growth_mb <= max_growth_mb, (

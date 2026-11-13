@@ -187,9 +187,20 @@ staging branch there (`git clone "$MIRROR" project-review`).
 ```bash
 make test                         # pytest (Docker tests skip if unavailable)
 make check                        # ruff + format + mypy strict + unit/contract
-DEVSANDBOX_E2E=1 pytest -q tests/e2e
-DEVSANDBOX_E2E=1 pytest -q tests/security tests/contract
+make integration                  # PostgreSQL-backed integration (no Docker tests)
+make security                     # security suite (Docker tests enabled)
+make e2e                          # E2E scenarios, excluding the randomized soak
+make soak                         # randomized crash/restart soak (50 runs)
+make check-all                    # all of the above with a pass/fail summary
+make drills                       # opt-in operational drills
 ```
+
+`scripts/check-all.sh` runs the fast gate, integration, security, E2E, and soak
+even if an earlier stage fails, then prints a per-stage summary and exits
+non-zero on any failure. Use `CHECK_ALL_FAIL_FAST=1` to stop at the first
+failure or `CHECK_ALL_DRY_RUN=1` to print the plan without running anything.
+The soak defaults to 50 runs; set `DEVSANDBOX_SOAK_RUNS` for a shorter run.
+Operational drills and their manual procedures are in [`drills.md`](drills.md).
 
 The real-OpenCode smoke test is opt-in and documented in
 [`acceptance.md`](acceptance.md) and [`agents-opencode.md`](agents-opencode.md).

@@ -13,6 +13,8 @@ make migrate     # alembic upgrade head
 make test        # pytest
 make integration # PostgreSQL-backed integration tests (no Docker required)
 make check       # scripts/check.sh (ruff + ruff format + mypy strict + pytest)
+make check-all   # full gate: check + integration + security + E2E + soak
+make drills      # opt-in Docker/PostgreSQL/disk/idle operational drills
 ```
 
 ## How to use

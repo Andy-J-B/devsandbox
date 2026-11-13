@@ -1,13 +1,14 @@
 # Acceptance matrix (plan 11)
 
-**Last full run:** 2026-11-07 (local macOS host)
+**Last full run:** 2026-11-12 (local macOS host)
 **Live free-model smoke tests:** 2026-11-11
 (`opencode/deepseek-v4.1-flash-free`) and 2026-11-09 (`ollama/qwen3:8b`) —
 see [Live free-model smoke tests](#live-free-model-smoke-tests).
 **Scope:** DevSandbox MVP, plans 01–11, exercised through the real Docker
 sandbox manager, real Git manager, real PostgreSQL, and the real orchestrator.
 The agent is the deterministic `FakeScriptAdapter`/`ScriptedAgent`; no LLM is
-required for the acceptance suite.
+required for the acceptance suite. Operational drills cover daemon/database
+outages, disk exhaustion, and idle resource use; see [drills.md](drills.md).
 
 The 13 criteria below are reconstructed from the E1–E15 → criteria mapping in
 [`plans/11-testing-e2e-acceptance.md`](../plans/11-testing-e2e-acceptance.md)
@@ -17,30 +18,39 @@ primary test(s); the E2E footer lists the run evidence.
 ## How to reproduce
 
 ```bash
-# static checks: ruff + ruff format + mypy strict + unit/contract
+# one command: fast gate + integration + security + E2E + soak, with a summary
+scripts/check-all.sh
+
+# individual stages (same commands the runner uses)
 scripts/check.sh
-
-# PostgreSQL-backed integration suite (same command as CI's `integration` job)
 python3 -m pytest -q -m "integration and not docker"
-
-# real PostgreSQL + Docker + Git end-to-end scenarios
-DEVSANDBOX_E2E=1 python3 -m pytest -q tests/e2e
-
-# randomized SIGKILL soak (default 50 runs)
-DEVSANDBOX_E2E=1 DEVSANDBOX_SOAK_RUNS=50 \
-  python3 -m pytest -q tests/e2e/test_e2e_crash_soak.py -k soak
+DEVSANDBOX_E2E=1 python3 -m pytest -q -m security
+scripts/e2e.sh --deselect=tests/e2e/test_e2e_crash_soak.py::test_soak_random_crash_points
+scripts/e2e.sh tests/e2e/test_e2e_crash_soak.py::test_soak_random_crash_points
 
 # security + cross-module contract suites
 DEVSANDBOX_E2E=1 python3 -m pytest -q tests/security tests/contract
+
+# operational drills (Docker outage, PostgreSQL restart, disk full, idle use)
+scripts/drills.sh
+DEVSANDBOX_DRILL_IDLE_SECONDS=300 scripts/drills.sh -k idle
 ```
 
+`scripts/check-all.sh` continues after a failed stage, prints a per-stage
+pass/fail summary with durations, and exits non-zero if anything failed. Set
+`CHECK_ALL_FAIL_FAST=1` to stop at the first failure or `CHECK_ALL_DRY_RUN=1`
+to print the plan without executing it. The soak defaults to 50 runs; override
+with `DEVSANDBOX_SOAK_RUNS`. The E2E stage deliberately deselects the soak test
+so a single long function cannot hide the rest of the E2E result.
+
 Prerequisites: Docker daemon reachable by the current user,
-`devsandbox/validator:latest` available, and PostgreSQL 16 reachable via
-`DEVSANDBOX_DATABASE_URL` (the suite creates isolated tables and drops them per
-test). To reuse an existing PostgreSQL service, set
-`DEVSANDBOX_TEST_DATABASE_URL` to its `postgresql+asyncpg://...` URL; CI uses
-this to share the job's Postgres service. Without that override, tests start an
-ephemeral PostgreSQL container via testcontainers when Docker is available.
+`devsandbox/validator:latest` available (the runners build it when missing),
+and PostgreSQL 16 reachable via `DEVSANDBOX_DATABASE_URL` (the suite creates
+isolated tables and drops them per test). To reuse an existing PostgreSQL
+service, set `DEVSANDBOX_TEST_DATABASE_URL` to its `postgresql+asyncpg://...`
+URL; CI uses this to share the job's Postgres service. Without that override,
+tests start an ephemeral PostgreSQL container via testcontainers when Docker is
+available.
 
 ## 13-criteria matrix
 
@@ -90,6 +100,9 @@ ephemeral PostgreSQL container via testcontainers when Docker is available.
 | E8 crash recovery — run 3 | same | **3 passed** (25.6 s) |
 | Randomized soak | `DEVSANDBOX_SOAK_RUNS=50 pytest -q tests/e2e/test_e2e_crash_soak.py -k soak` | **4 passed** (3 E8 + soak test; 50 randomized crash/restart cycles, zero invariant violations; 415.2 s) |
 | Security + contract | `DEVSANDBOX_E2E=1 pytest -q tests/security tests/contract` | **65 passed** (32.4 s) |
+| Full check-all — 2026-11-12 | `scripts/check-all.sh` | check **465 passed** (32.3 s), integration **103 passed** (18.7 s), security **39 passed** (32.1 s), E2E **19 passed** (161.1 s), soak **1 passed** / 50 crash cycles (410.1 s); **11 m** total, all stages PASS |
+| Operational drills — 2026-11-12 | `DEVSANDBOX_DRILLS=1 DEVSANDBOX_E2E=1 pytest -q -m drill` | **5 passed** (69.8 s): Docker outage, PostgreSQL restart, disk-full handling, idle resources |
+| Idle drill — 300 s window | `DEVSANDBOX_DRILLS=1 DEVSANDBOX_E2E=1 DEVSANDBOX_DRILL_IDLE_SECONDS=300 pytest -q -s -m drill tests/drills/test_drill_idle_resources.py` | **1 passed** (305.1 s); RSS 95.1 → 48.7 MiB (growth −46.4 MiB), **1.5% CPU** (limits: 64 MiB growth, 50% CPU) |
 
 Environment: macOS (Darwin), Python 3.12, Docker Desktop server 29.1.3,
 `devsandbox/validator:latest` (uid 1000, Python 3.12.16, pytest 9.2.0, git
@@ -201,10 +214,10 @@ security + contract run → 65 passed.
 | Check | Status | Evidence / note |
 |---|---|---|
 | Cold start | **Measured** | Fresh interpreter import of `devsandbox.api.app`: **0.78 s**, ~85 MB peak RSS on this host. Not a gated benchmark. |
-| Idle resource usage | **Inspected, not benchmarked** | The engine uses `idle_sleep_seconds=0.1` and blocks on a wake event up to `tick_seconds=1.0` when idle (`orchestrator/models.py`, `engine.run_forever`); there is no busy loop. No long-duration RSS baseline was recorded. |
-| Docker daemon restart | **Not exercised** | A daemon outage surfaces as a sandbox error; startup reconciliation reaps managed containers after the orchestrator restarts (`docs/recovery.md`). Stopping the developer's Docker daemon was not done in this run; treat as a manual pre-production check. |
-| PostgreSQL restart | **Not exercised** | `db/session.py` configures `pool_pre_ping=True`, so pooled connections are validated on checkout and replaced after a restart. Lost lease refresh raises `OrchestratorAlreadyRunning`, and the process is expected to be restarted by the service manager. Restarting the shared local PostgreSQL was not done in this run; treat as a manual pre-production check. |
-| Disk-full handling | **Not contained (accepted)** | There is no per-workspace disk quota (residual risk F6). Diff size and changed-file caps run in validation pre-checks, logs are capped, and the scheduler gates on `disk_min_free_mb`; an agent can still fill the host filesystem through its bind-mounted workspace. |
+| Idle resource usage | **Measured by drill** | The 300 s idle drill recorded RSS 95.1 → 48.7 MiB (no growth; −46.4 MiB) and **1.5% CPU** with the engine ticking every 100 ms. The automatic gate fails above 64 MiB RSS growth or 50% CPU; tune with `DEVSANDBOX_DRILL_*`. |
+| Docker daemon restart | **Automatic drill passes; real-daemon procedure manual** | The drill fails the sandbox boundary exactly like an unavailable daemon for one attempt, verifies an `infra_error` retry, and completes after recovery. The destructive real-daemon procedure is documented in [drills.md](drills.md) and should be run on a disposable host. Startup reconciliation still reaps managed containers after an orchestrator restart (`docs/recovery.md`). |
+| PostgreSQL restart | **Automatic drill passes** | `tests/drills/test_drill_postgres_restart.py` stops and starts a dedicated testcontainers PostgreSQL instance; the engine retries transient disconnects with backoff, keeps its lease, and resumes. `pool_pre_ping=True` replaces stale pooled connections. Manual procedure: [drills.md](drills.md). |
+| Disk-full handling | **Error path tested; no per-workspace quota** | `ENOSPC`/quota errors are translated into clear `SandboxError`s and retried as infra failures; the manual loopback-filesystem drill is in [drills.md](drills.md). There is still no per-workspace disk quota (residual risk F6), so an agent can fill the host through its bind-mounted workspace. |
 | Fresh-machine quickstart | **Not reproduced on a brand-new host** | The E2E harness exercises the same real modules and commands as `docs/quickstart.md`, but the documented quickstart was not replayed verbatim on a clean machine in this run. Recommended before release sign-off. |
 | Real OpenCode smoke test | **Pass (free hosted and local models)** | 2026-11-11: `opencode/deepseek-v4.1-flash-free` through `OpenCodeAdapter` + Docker, 5,865 input / 287 output / 6,152 total tokens, **$0.00**, exit 0. 2026-11-09: `ollama/qwen3:8b`, 4,094 input / 1,702 output / 5,796 total tokens, **$0.00**, exit 0. Both runs passed the `hello.txt` assertion. Command and detail: [Live free-model smoke tests](#live-free-model-smoke-tests). |
 
@@ -212,10 +225,14 @@ security + contract run → 65 passed.
 
 The automated acceptance suite covers all 13 criteria with real Docker, real
 Git, and real PostgreSQL, and the 50-run randomized crash soak found zero
-invariant violations. The opt-in real-OpenCode smoke test has passed with a
-free hosted model (`opencode/deepseek-v4.1-flash-free`, $0.00, 6,152 tokens)
-and a free local model (`ollama/qwen3:8b`, $0.00, 5,796 tokens). Remaining
-sign-off items are operational rather than code-level: replay the
-fresh-machine quickstart, and perform the Docker/PostgreSQL restart and
-disk-full drills on a dedicated pre-production host. Re-run the live smoke
-test against the intended production provider before release.
+invariant violations. `scripts/check-all.sh` now runs the fast gate, integration,
+security, E2E, and soak with a pass/fail summary, and the automatic operational
+drills cover Docker outages, PostgreSQL restarts, disk-full handling, and idle
+resource use. The opt-in real-OpenCode smoke test has passed with a free hosted
+model (`opencode/deepseek-v4.1-flash-free`, $0.00, 6,152 tokens) and a free
+local model (`ollama/qwen3:8b`, $0.00, 5,796 tokens). Remaining sign-off items
+are operational rather than code-level: replay the fresh-machine quickstart,
+run the destructive real-daemon and real-disk procedures on a dedicated
+pre-production host, and roll out digest-pinned images per
+[images.md](images.md). Re-run the live smoke test against the intended
+production provider before release.
