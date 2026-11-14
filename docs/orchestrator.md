@@ -164,7 +164,9 @@ Retry policy:
 - **Repeated identical failures stop early.** The signature is kind + normalized
   error hash; `repeat_failure_threshold` (default 2) consecutive identical
   failures end the task with `FAILED` and `requires_attention` instead of
-  burning more model usage.
+  burning more model usage. This applies to budget-consuming failures only:
+  infra failures repeat by definition while a dependency is down, so they are
+  governed by the infra cap and backoff instead.
 - A policy violation fails immediately, is never retried, and is surfaced for
   the user.
 - A budget deferral is never a task failure; the task stays queued.

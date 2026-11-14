@@ -78,6 +78,9 @@ Docker, confirm a normal run reaches a completed task:
    deterministic attempt name on the next run and removed by the janitor.
    Infra retries back off with the infra-failure count and the default cap is
    8, which leaves several minutes for a normal Docker Desktop restart.
+   Repeated identical sandbox errors during the outage are expected; the
+   repeat-identical breaker only stops budget-consuming failures, so it does
+   not abort the task mid-outage.
 6. Verify the task eventually completes and the staging branch contains the
    validated commit.
 

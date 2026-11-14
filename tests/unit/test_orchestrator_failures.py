@@ -34,12 +34,12 @@ def _classifier(**overrides) -> FailureClassifier:
     return FailureClassifier(**defaults)
 
 
-def _agent(status: str, exit_code: int | None = 1) -> AgentRunResult:
+def _agent(status: str, exit_code: int | None = 1, summary: str | None = None) -> AgentRunResult:
     return AgentRunResult(
         exit_status=status,  # type: ignore[arg-type]
         exit_code=exit_code,
         log_path=None,
-        summary=None,
+        summary=summary,
         token_usage=None,
         duration_seconds=1.0,
     )
@@ -90,6 +90,59 @@ def test_backoff_is_capped() -> None:
     decision = classifier.decide(record, attempt_count=10, max_retries=20)
     assert decision.retry_not_before is not None
     assert decision.retry_not_before.second == 15 or decision.retry_not_before.minute == 12
+
+
+def test_sandbox_error_summary_is_preserved_for_diagnostics() -> None:
+    """The dropped-daemon message must not be reduced to an opaque status."""
+    message = "lost connection to Docker while waiting for task-1-a1: Response ended prematurely"
+    record = _classifier().from_agent_result(_agent("sandbox_error", None, summary=message))
+
+    assert record is not None
+    assert record.kind is FailureKind.CONTAINER_FAILURE
+    assert not record.counts_against_budget
+    assert message in record.summary
+    assert record.detail["summary"] == message
+
+
+def test_sandbox_error_summary_changes_the_signature() -> None:
+    classifier = _classifier()
+    first = classifier.from_agent_result(
+        _agent("sandbox_error", None, summary="daemon is not running")
+    )
+    second = classifier.from_agent_result(
+        _agent("sandbox_error", None, summary="image pull failed")
+    )
+    assert first is not None and second is not None
+    assert first.signature != second.signature
+
+
+def test_repeated_identical_infra_failure_is_not_stopped_by_repeat_breaker() -> None:
+    """A daemon outage produces the same error repeatedly; keep retrying."""
+    classifier = _classifier(max_infra_failures=8, repeat_failure_threshold=2)
+    record = classifier.from_agent_result(
+        _agent(
+            "sandbox_error",
+            None,
+            summary="lost connection to Docker: Response ended prematurely",
+        )
+    )
+    assert record is not None and not record.counts_against_budget
+    previous = {
+        "signature": record.signature,
+        "consecutive_identical": 3,
+        "infra_failures": 3,
+    }
+
+    decision = classifier.decide(
+        record,
+        attempt_count=4,
+        max_retries=0,
+        previous_failure=previous,
+        infra_failures=3,
+    )
+
+    assert decision.action is FailureAction.RETRY
+    assert decision.record.kind is FailureKind.CONTAINER_FAILURE
 
 
 def test_repeated_identical_failure_stops_early() -> None:

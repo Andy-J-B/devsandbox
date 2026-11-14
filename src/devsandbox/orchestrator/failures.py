@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..agents.interfaces import AgentRunResult
+from ..agents.sandbox_result import clean_summary
 from ..common.errors import DevSandboxError, PolicyViolation
 from ..common.time import utcnow
 from ..gitmgr.interfaces import IntegrationResult
@@ -153,7 +154,14 @@ class FailureClassifier:
             "sandbox_error": (FailureKind.CONTAINER_FAILURE, False),
         }
         kind, counts = mapping.get(status, (FailureKind.UNKNOWN, False))
+        # Keep the adapter's message (for example the underlying
+        # ``SandboxError`` caused by a dropped daemon connection) instead of
+        # reducing every sandbox failure to the same opaque string.  The
+        # adapter already redacts/truncates agent summaries.
+        agent_summary = clean_summary(result.summary)
         summary = f"agent {status} (exit code {result.exit_code})"
+        if agent_summary:
+            summary = f"{summary}: {agent_summary}"
         return self.make_record(
             kind,
             summary,
@@ -163,6 +171,7 @@ class FailureClassifier:
                 "exit_status": status,
                 "exit_code": result.exit_code,
                 "duration_seconds": result.duration_seconds,
+                "summary": agent_summary,
             },
         )
 
@@ -379,6 +388,27 @@ class FailureClassifier:
                 record=record,
                 reason="non-retryable failure",
             )
+        if not record.counts_against_budget:
+            # Infra failures are expected to repeat while the dependency is
+            # down (a Docker daemon restart produces the same error several
+            # times in a row).  The infra cap and its backoff schedule handle
+            # them; the repeated-identical breaker must not short-circuit it.
+            if infra_failures >= self.max_infra_failures:
+                return FailureDecision(
+                    action=FailureAction.FAIL,
+                    record=record,
+                    reason=f"infra failure cap ({self.max_infra_failures}) exhausted",
+                )
+            return FailureDecision(
+                action=FailureAction.RETRY,
+                record=record,
+                # Back off by the number of infra failures, not by the task
+                # attempt number.  A Docker daemon restart commonly takes tens
+                # of seconds; retrying at 1s/2s/4s would exhaust the breaker
+                # before the daemon is back.
+                retry_not_before=self._backoff(infra_failures + 1, counts_budget=False),
+                reason="infra failure; retry does not consume the task retry budget",
+            )
         if repeated:
             repeated_record = self.make_record(
                 FailureKind.REPEATED_FAILURE,
@@ -397,23 +427,6 @@ class FailureClassifier:
                 action=FailureAction.FAIL,
                 record=repeated_record,
                 reason="repeated identical failure; stopping early to save model usage",
-            )
-        if not record.counts_against_budget:
-            if infra_failures >= self.max_infra_failures:
-                return FailureDecision(
-                    action=FailureAction.FAIL,
-                    record=record,
-                    reason=f"infra failure cap ({self.max_infra_failures}) exhausted",
-                )
-            return FailureDecision(
-                action=FailureAction.RETRY,
-                record=record,
-                # Back off by the number of infra failures, not by the task
-                # attempt number.  A Docker daemon restart commonly takes tens
-                # of seconds; retrying at 1s/2s/4s would exhaust the breaker
-                # before the daemon is back.
-                retry_not_before=self._backoff(infra_failures + 1, counts_budget=False),
-                reason="infra failure; retry does not consume the task retry budget",
             )
         if retries_left <= 0:
             return FailureDecision(
