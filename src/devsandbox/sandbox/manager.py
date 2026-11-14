@@ -30,12 +30,19 @@ from pathlib import Path
 from typing import Any
 
 import docker
-from docker.errors import APIError, ImageNotFound, NotFound  # type: ignore[import-not-found]
-from requests.exceptions import (
-    ConnectionError as RequestsConnectionError,
+from docker.errors import (  # type: ignore[import-not-found]
+    APIError,
+    DockerException,
+    ImageNotFound,
+    NotFound,
 )
 from requests.exceptions import (
+    ChunkedEncodingError,
     ReadTimeout,
+    RequestException,
+)
+from requests.exceptions import (
+    ConnectionError as RequestsConnectionError,
 )
 
 from ..common.errors import PolicyViolation, SandboxError
@@ -157,7 +164,13 @@ class DockerSandboxManager:
         # signals EOF when the container exits.  Attaching after
         # ``containers.run(detach=True)`` races with fast containers and can
         # leave the socket open forever.
-        log_socket = await asyncio.to_thread(self._attach_logs_socket, container)
+        try:
+            log_socket = await asyncio.to_thread(self._attach_logs_socket, container)
+        except (RequestException, DockerException) as exc:
+            await asyncio.to_thread(self._remove_container_ignoring_errors, container)
+            raise SandboxError(
+                f"failed to attach log stream for {req.attempt_id}: {exc}"
+            ) from exc
         try:
             await asyncio.to_thread(container.start)
         except Exception as exc:
@@ -190,12 +203,22 @@ class DockerSandboxManager:
                     timeout=req.timeout_seconds + _WAIT_EXTRA_SECONDS,
                 )
                 exit_code = int(wait_result.get("StatusCode", 0) or 0)
-            except (ReadTimeout, TimeoutError, RequestsConnectionError) as exc:
+            except (
+                ReadTimeout,
+                TimeoutError,
+                RequestsConnectionError,
+                ChunkedEncodingError,
+            ) as exc:
                 # docker-py raises ``requests.ConnectionError`` wrapping a read
                 # timeout on some daemon/transport versions.  Re-raise real
                 # connection failures instead of misreporting them as timeouts.
-                if isinstance(exc, RequestsConnectionError) and "timed out" not in str(exc).lower():
-                    raise
+                if isinstance(
+                    exc, (RequestsConnectionError, ChunkedEncodingError)
+                ) and "timed out" not in str(exc).lower():
+                    raise SandboxError(
+                        f"lost connection to Docker while waiting for "
+                        f"{req.attempt_id}: {exc}"
+                    ) from exc
                 timed_out = True
                 await asyncio.to_thread(container.kill, signal="SIGTERM")
                 try:
@@ -204,10 +227,22 @@ class DockerSandboxManager:
                         timeout=_GRACE_SECONDS + 5.0,
                     )
                     exit_code = int(wait_result.get("StatusCode", 0) or 0) if wait_result else None
-                except (ReadTimeout, TimeoutError, RequestsConnectionError):
+                except (
+                    ReadTimeout,
+                    TimeoutError,
+                    RequestsConnectionError,
+                    ChunkedEncodingError,
+                ):
                     await asyncio.to_thread(container.kill, signal="SIGKILL")
                     await asyncio.to_thread(container.wait)
                     exit_code = None
+            except DockerException as exc:
+                # The daemon can return 404/500/503 while it is restarting.
+                # Treat every Docker API failure here as infrastructure so the
+                # task is retried instead of being marked a permanent failure.
+                raise SandboxError(
+                    f"Docker API error while waiting for {req.attempt_id}: {exc}"
+                ) from exc
         finally:
             stop_sampling.set()
             await asyncio.gather(sampler_task, stream_task, return_exceptions=True)
@@ -229,6 +264,9 @@ class DockerSandboxManager:
                 raise SandboxError(
                     f"disk full while writing logs for {req.attempt_id}: {error}"
                 ) from error
+            raise SandboxError(
+                f"failed to stream logs for {req.attempt_id}: {error}"
+            ) from error
 
         return SandboxResult(
             container_id=container_id,
@@ -267,9 +305,9 @@ class DockerSandboxManager:
         except ImageNotFound:
             try:
                 self._client.images.pull(image)
-            except APIError as exc:
+            except (APIError, RequestException) as exc:
                 raise SandboxError(f"failed to pull image {image}: {exc}") from exc
-        except APIError as exc:
+        except (APIError, RequestException) as exc:
             raise SandboxError(f"failed to inspect image {image}: {exc}") from exc
 
     def _create_or_replace_container(
@@ -279,15 +317,19 @@ class DockerSandboxManager:
         name = _container_name(req.attempt_id)
         try:
             existing = self._client.containers.get(name)
-            with contextlib.suppress(APIError):
+            with contextlib.suppress(APIError, RequestException):
                 existing.remove(force=True)
         except NotFound:
             pass
+        except (APIError, RequestException) as exc:
+            raise SandboxError(
+                f"failed to replace prior container for {req.attempt_id}: {exc}"
+            ) from exc
 
         kwargs = self._build_container_kwargs(req, network, resources)
         try:
             return self._client.containers.create(**kwargs)
-        except APIError as exc:
+        except (APIError, RequestException) as exc:
             raise SandboxError(f"failed to create container for {req.attempt_id}: {exc}") from exc
 
     @staticmethod
@@ -395,7 +437,7 @@ class DockerSandboxManager:
                         stderr_written = self._write_to_cap(
                             stderr_file, encoded, stderr_written, cap_bytes
                         )
-        except OSError as exc:
+        except (OSError, RequestException, DockerException) as exc:
             if errors is not None:
                 errors.append(exc)
             else:
@@ -455,6 +497,8 @@ class DockerSandboxManager:
             await asyncio.to_thread(self._client.containers.get, container_id)
         except NotFound as exc:
             raise SandboxError(f"container {container_id} not found") from exc
+        except (APIError, RequestException) as exc:
+            raise SandboxError(f"failed to inspect container {container_id}: {exc}") from exc
 
         try:
             exec_id = await asyncio.to_thread(self._client.api.exec_create, container_id, cmd)
@@ -468,7 +512,7 @@ class DockerSandboxManager:
         except TimeoutError:
             timed_out = True
             exit_code = None
-        except APIError as exc:
+        except (APIError, RequestException, DockerException) as exc:
             raise SandboxError(f"exec in {container_id} failed: {exc}") from exc
 
         return ExecResult(
@@ -482,7 +526,7 @@ class DockerSandboxManager:
             container = await asyncio.to_thread(self._client.containers.get, container_id)
         except NotFound:
             return
-        with contextlib.suppress(APIError):
+        with contextlib.suppress(APIError, RequestException):
             await asyncio.to_thread(container.kill)
 
     async def destroy(self, container_id: str) -> None:
@@ -490,7 +534,7 @@ class DockerSandboxManager:
             container = await asyncio.to_thread(self._client.containers.get, container_id)
         except NotFound:
             return
-        with contextlib.suppress(APIError):
+        with contextlib.suppress(APIError, RequestException):
             await asyncio.to_thread(container.remove, force=True)
 
     async def list_managed(self) -> list[ManagedContainer]:

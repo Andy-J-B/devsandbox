@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import SecretStr
+from requests.exceptions import ChunkedEncodingError
 
 from devsandbox.common.errors import PolicyViolation, SandboxError
 from devsandbox.common.types import AttemptId, NetworkPolicy, ResourceProfile
@@ -67,6 +68,16 @@ class FakeSocket:
         chunk = self._buffer[:size]
         self._buffer = self._buffer[size:]
         return chunk
+
+
+class _DroppedLogSocket:
+    """Socket that behaves like a daemon connection dropped mid-stream."""
+
+    def recv(self, size: int) -> bytes:
+        raise ChunkedEncodingError("Response ended prematurely")
+
+    def close(self) -> None:
+        return None
 
 
 class FakeImages:
@@ -351,6 +362,55 @@ def test_run_treats_requests_read_timeout_as_sandbox_timeout() -> None:
     assert result.exit_code == 137
     assert container.killed is True
     assert container.removed is True
+
+
+class _DroppedConnectionContainer(FakeContainer):
+    """Container whose ``wait`` loses the daemon connection (e.g. restart)."""
+
+    def wait(self, timeout: int | None = None) -> dict[str, Any]:
+        raise ChunkedEncodingError("Response ended prematurely")
+
+
+def _run_with_container(
+    manager: DockerSandboxManager,
+    client: FakeDockerClient,
+    container: Any,
+    req: Any,
+) -> Any:
+    import asyncio
+
+    original_create = client.containers.create
+
+    def create(**kwargs: Any) -> Any:
+        client.containers.run_kwargs.append(kwargs)
+        client.containers._containers[container.id] = container
+        return container
+
+    client.containers.create = create  # type: ignore[method-assign]
+    try:
+        return asyncio.run(manager.run(req))
+    finally:
+        client.containers.create = original_create  # type: ignore[method-assign]
+
+
+def test_run_wraps_daemon_connection_drop_as_sandbox_error() -> None:
+    """A Docker restart mid-wait must become an infra retry, not a fatal agent error."""
+    client = FakeDockerClient()
+    manager = _make_manager(client=client)
+    container = _DroppedConnectionContainer()
+
+    with pytest.raises(SandboxError, match="lost connection to Docker"):
+        _run_with_container(manager, client, container, _make_request())
+
+
+def test_run_wraps_log_stream_connection_drop_as_sandbox_error() -> None:
+    client = FakeDockerClient()
+    manager = _make_manager(client=client)
+    container = FakeContainer()
+    container.attach_socket = lambda params: _DroppedLogSocket()  # type: ignore[method-assign]
+
+    with pytest.raises(SandboxError, match="failed to stream logs"):
+        _run_with_container(manager, client, container, _make_request())
 
 
 def test_run_creates_container_and_returns_result() -> None:

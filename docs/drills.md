@@ -66,8 +66,13 @@ Docker, confirm a normal run reaches a completed task:
    - Linux: `sudo systemctl restart docker`
    - Docker Desktop: restart Docker Desktop (or `osascript` equivalent)
 4. While the daemon is down, expect sandbox operations to raise
-   `SandboxError`; the task should move to `RETRY_WAIT` with an `infra_error`
-   payload. The orchestrator process must stay alive.
+   `SandboxError`; the task should move to `RETRY_WAIT` on an infra retry (the
+   payload is `infra_error` for a raised `SandboxError` and
+   `container_failure` for an agent run that returned `sandbox_error`). The
+   orchestrator process must stay alive. Docker SDK transport failures (for
+   example `ChunkedEncodingError: Response ended prematurely` from a dropped
+   log/wait connection) are translated to `SandboxError`, not left as an
+   unclassified fatal agent error.
 5. After `docker info` succeeds again, expect the retry to launch a fresh
    container. The stale container from the crashed daemon is replaced by the
    deterministic attempt name on the next run and removed by the janitor.
