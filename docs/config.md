@@ -20,6 +20,10 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   `run_engine`
 - `agent`: `default_runtime`, `default_provider`, `default_model`, `image`,
   `base_url`, `secret_ref`, `model_budget`
+  - `default_runtime` selects the adapter: `opencode` (default) or
+    `fake-script` (deterministic, no model; used for drills and local
+    end-to-end checks). Unknown values fail at startup instead of silently
+    running a real model.
   - `image` is the agent sandbox image (default `devsandbox/agent:latest`).
     Production deployments should pin it by digest and enable
     `security.require_pinned_images`; see [images.md](images.md).

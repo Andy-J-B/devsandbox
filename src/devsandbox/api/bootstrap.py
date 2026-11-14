@@ -13,6 +13,8 @@ from pathlib import Path
 import docker
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from ..agents.fake import FakeScriptAdapter
+from ..agents.interfaces import AgentAdapter
 from ..agents.opencode import OpenCodeAdapter
 from ..common.types import RepoHandle
 from ..config.policy import SecurityPolicy
@@ -30,6 +32,7 @@ from ..planner.models import FailureRecord as PlannerFailureRecord
 from ..planner.models import Plan
 from ..planner.service import PlanService
 from ..planner.templates import TemplatePlanner
+from ..sandbox.interfaces import SandboxManager
 from ..sandbox.manager import DockerSandboxManager
 from ..scheduler.config import SchedulerConfig
 from ..scheduler.monitor import PsutilResourceMonitor
@@ -98,6 +101,24 @@ def _docker_ping() -> bool:
         client.close()
 
 
+def _make_agent(sandbox: SandboxManager, settings: DevSandboxSettings) -> AgentAdapter:
+    """Select the configured agent runtime.
+
+    ``fake-script`` is the deterministic runtime used for drills and local
+    end-to-end checks; anything unrecognized fails closed instead of silently
+    falling back to a real model.
+    """
+    runtime = (settings.agent.default_runtime or "opencode").strip().lower()
+    if runtime == "opencode":
+        return OpenCodeAdapter(sandbox, settings)
+    if runtime == "fake-script":
+        return FakeScriptAdapter(sandbox, settings)
+    raise ValueError(
+        f"unsupported agent.default_runtime {settings.agent.default_runtime!r}; "
+        "expected 'opencode' or 'fake-script'"
+    )
+
+
 def build_container(
     settings: DevSandboxSettings | None = None,
 ) -> AppContainer:
@@ -129,7 +150,7 @@ def build_container(
         settings=resolved,
         data_root=data_root,
     )
-    agent = OpenCodeAdapter(sandbox, resolved)
+    agent = _make_agent(sandbox, resolved)
     scheduler = DeterministicScheduler(SchedulerConfig.from_settings(resolved))
     monitor = PsutilResourceMonitor(SchedulerConfig.from_settings(resolved), data_root=data_root)
     projects = ProjectService(

@@ -57,6 +57,21 @@ Docker, confirm a normal run reaches a completed task:
    A failure in seconds with no `infra_error` event means Docker was never the
    cause.
 
+### Deterministic variant (no model)
+
+To validate only the Docker/infrastructure path, run `serve` with the built-in
+fake agent:
+
+```bash
+DEVSANDBOX_AGENT__DEFAULT_RUNTIME=fake-script devsandbox serve
+```
+
+Submit a project whose validation accepts the fake agent's committed file
+(for example `test -f AGENT_OUTPUT.md`). The fake agent always edits and
+commits, so a completed task proves the orchestrator survived the daemon
+restart. Do not use this variant to judge real model quality; it deliberately
+bypasses the LLM.
+
 ### Procedure
 
 1. Submit a fresh supervised project and wait until a task is running (or use
