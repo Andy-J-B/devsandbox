@@ -16,7 +16,7 @@ from tests.fakes.validation import FakeValidator
 from tests.orchestrator_helpers import FakeClock, get_project, get_task, seed_project
 from tests.planner_helpers import make_spec
 
-from devsandbox.agents.interfaces import AgentRunResult
+from devsandbox.agents.interfaces import AgentRunRequest, AgentRunResult
 from devsandbox.common.errors import OrchestratorAlreadyRunning, SandboxError
 from devsandbox.common.types import ProjectStatus, ResourceProfile, TaskStatus
 from devsandbox.config.policy import SecurityPolicy
@@ -39,6 +39,21 @@ def _result(status: str = "exited_ok", exit_code: int = 0) -> AgentRunResult:
         token_usage=None,
         duration_seconds=1.0,
     )
+
+
+class _ScriptedAgentAdapter(FakeAgentAdapter):
+    """Fake adapter that preserves the order of results and raised errors."""
+
+    def __init__(self, steps: list[AgentRunResult | BaseException]) -> None:
+        super().__init__()
+        self._steps = list(steps)
+
+    async def run(self, req: AgentRunRequest) -> AgentRunResult:
+        self.calls.append(req)
+        step = self._steps.pop(0)
+        if isinstance(step, BaseException):
+            raise step
+        return step
 
 
 def _engine(
@@ -259,6 +274,55 @@ async def test_infra_failure_does_not_consume_retry_budget(db_engine, settings) 
     assert TaskStatus(row.status) is TaskStatus.COMPLETED
     assert len(agent.calls) == 2
     assert row.attempt_count == 2
+
+
+async def test_infra_failure_preserves_previous_actionable_failure(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(maker, make_spec(), keys=["t-a"], max_retries=1)
+    agent = _ScriptedAgentAdapter(
+        [
+            _result(),  # exit 0 but no committed change
+            SandboxError("lost connection to Docker while waiting for the container"),
+            _result(),
+        ]
+    )
+    validator = FakeValidator(
+        task_reports=[
+            FakeValidator.failed("no changes detected in workspace"),
+            FakeValidator.passed(),
+        ]
+    )
+    engine = _engine(maker, settings, clock, agent=agent, validator=validator)
+
+    await engine.run_until_idle()
+
+    row = await get_task(maker, tasks["t-a"].id)
+    assert TaskStatus(row.status) is TaskStatus.COMPLETED
+    assert len(agent.calls) == 3
+    # The infra retry must not replace the actionable no_changes feedback.
+    assert agent.calls[2].prior_failure_summary is not None
+    assert "no changes" in agent.calls[2].prior_failure_summary
+    assert "infrastructure reasons" in agent.calls[2].prior_failure_summary
+
+
+async def test_infra_failure_without_prior_budgeted_failure_keeps_its_context(
+    db_engine, settings
+) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(maker, make_spec(), keys=["t-a"], max_retries=0)
+    agent = FakeAgentAdapter()
+    agent.fail(SandboxError("docker daemon unavailable"))
+    agent.queue_result(_result())
+    engine = _engine(maker, settings, clock, agent=agent)
+
+    await engine.run_until_idle()
+
+    row = await get_task(maker, tasks["t-a"].id)
+    assert TaskStatus(row.status) is TaskStatus.COMPLETED
+    assert agent.calls[1].prior_failure_summary is not None
+    assert "docker daemon unavailable" in agent.calls[1].prior_failure_summary
 
 
 async def test_repeated_identical_failures_stop_early(db_engine, settings) -> None:

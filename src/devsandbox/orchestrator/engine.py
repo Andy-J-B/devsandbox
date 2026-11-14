@@ -1444,11 +1444,20 @@ class OrchestratorEngine:
             "summary": decision.record.summary,
             "signature": record.signature,
             "consecutive_identical": consecutive,
+            "counts_against_budget": decision.record.counts_against_budget,
             "infra_failures": infra_failures + (0 if record.counts_against_budget else 1),
             "stage": stage,
             "diagnostics_path": decision.record.diagnostics_path,
             "detail": decision.record.detail,
         }
+        if not decision.record.counts_against_budget:
+            # An infrastructure retry must not erase the last actionable
+            # failure: the next agent attempt needs to know why the previous
+            # *budgeted* attempt was rejected (for example ``no_changes``),
+            # not just that Docker was briefly unavailable.
+            actionable = _actionable_failure(previous)
+            if actionable is not None:
+                failure_payload["prior_failure"] = actionable
         current = TaskStatus(task.status)
         if decision.action is FailureAction.RETRY:
             target = TaskStatus.READY if pre_agent else TaskStatus.RETRY_WAIT
@@ -2124,12 +2133,45 @@ def _critical_path_lengths(
     return {task.id: depth(task.id) for task in tasks}
 
 
+def _actionable_failure(failure: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the most recent failure that consumed a retry budget.
+
+    Infrastructure failures are retried without consuming budget, so their
+    payloads deliberately carry the previous actionable failure forward in
+    ``prior_failure``.  Returning ``None`` means no budgeted failure has
+    happened yet.
+    """
+    carried = failure.get("prior_failure")
+    if isinstance(carried, dict) and carried.get("summary"):
+        return carried
+    if failure.get("counts_against_budget", True) and failure.get("summary"):
+        keys = ("kind", "summary", "signature", "stage", "detail", "diagnostics_path")
+        return {key: failure[key] for key in keys if key in failure}
+    return None
+
+
 def _prior_failure_summary(task: TaskModel) -> str | None:
     failure = task.failure_json or {}
     if not failure:
         return None
     summary = failure.get("summary")
     kind = failure.get("kind")
+    if failure.get("counts_against_budget", True) is False:
+        actionable = _actionable_failure(failure)
+        if actionable is not None:
+            actionable_summary = actionable.get("summary")
+            actionable_kind = actionable.get("kind")
+            text = (
+                f"{actionable_kind}: {actionable_summary}"
+                if actionable_kind
+                else str(actionable_summary)
+            )
+            if summary:
+                text += (
+                    "\n\n(The most recent attempt failed for infrastructure reasons "
+                    f"and was retried without consuming the retry budget: {kind}: {summary})"
+                )
+            return text
     if summary:
         return f"{kind}: {summary}" if kind else str(summary)
     return None
