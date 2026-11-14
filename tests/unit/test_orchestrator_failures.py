@@ -135,6 +135,21 @@ def test_infra_failure_does_not_consume_retry_budget_but_has_a_cap() -> None:
     )
 
 
+def test_infra_backoff_grows_with_consecutive_infra_failures() -> None:
+    """A daemon restart must not exhaust the breaker in the first few seconds."""
+    classifier = _classifier(max_infra_failures=8)
+    record = classifier.from_exception(GitError("docker daemon restarting"))
+
+    first = classifier.decide(record, attempt_count=1, max_retries=0, infra_failures=0)
+    second = classifier.decide(record, attempt_count=2, max_retries=0, infra_failures=1)
+    third = classifier.decide(record, attempt_count=3, max_retries=0, infra_failures=2)
+
+    assert first.action is FailureAction.RETRY
+    assert first.retry_not_before == datetime(2026, 1, 1, 12, 0, 10, tzinfo=UTC)
+    assert second.retry_not_before == datetime(2026, 1, 1, 12, 0, 20, tzinfo=UTC)
+    assert third.retry_not_before == datetime(2026, 1, 1, 12, 0, 40, tzinfo=UTC)
+
+
 def test_policy_violation_fails_immediately() -> None:
     classifier = _classifier()
     record = classifier.from_exception(PolicyViolation("network escalation"))

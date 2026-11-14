@@ -76,6 +76,8 @@ Docker, confirm a normal run reaches a completed task:
 5. After `docker info` succeeds again, expect the retry to launch a fresh
    container. The stale container from the crashed daemon is replaced by the
    deterministic attempt name on the next run and removed by the janitor.
+   Infra retries back off with the infra-failure count and the default cap is
+   8, which leaves several minutes for a normal Docker Desktop restart.
 6. Verify the task eventually completes and the staging branch contains the
    validated commit.
 

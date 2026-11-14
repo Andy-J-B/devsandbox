@@ -155,8 +155,11 @@ Retry policy:
   `tasks.retry_not_before`; readiness only requeues the task once the deadline
   passes.
 - **Infra failures do not consume the task's retry budget.** They are bounded
-  separately by `OrchestratorConfig.max_infra_failures` (default 3; see
-  `failure_json.infra_failures`). Git conflicts rebase on the new staging head
+  separately by `OrchestratorConfig.max_infra_failures` (default 8; see
+  `failure_json.infra_failures`). Their backoff grows with the number of
+  consecutive infra failures rather than the task attempt count, so a Docker
+  daemon restart that takes tens of seconds does not exhaust the breaker before
+  the daemon is available again. Git conflicts rebase on the new staging head
   and include the conflicting files in the next prompt.
 - **Repeated identical failures stop early.** The signature is kind + normalized
   error hash; `repeat_failure_threshold` (default 2) consecutive identical

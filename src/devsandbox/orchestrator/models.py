@@ -33,7 +33,7 @@ class OrchestratorConfig(BaseModel):
     db_reconnect_max_seconds: float = 30.0
 
     # Retries / circuit breakers ------------------------------------------
-    max_infra_failures: int = 3
+    max_infra_failures: int = 8
     max_total_attempts: int = 100
     max_replans: int = 2
     backoff_base_seconds: float = 1.0

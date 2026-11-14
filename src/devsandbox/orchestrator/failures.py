@@ -122,7 +122,7 @@ class FailureClassifier:
     def __init__(
         self,
         *,
-        max_infra_failures: int = 3,
+        max_infra_failures: int = 8,
         repeat_failure_threshold: int = 2,
         backoff_base_seconds: float = 1.0,
         backoff_max_seconds: float = 300.0,
@@ -408,7 +408,11 @@ class FailureClassifier:
             return FailureDecision(
                 action=FailureAction.RETRY,
                 record=record,
-                retry_not_before=self._backoff(attempt_count, counts_budget=False),
+                # Back off by the number of infra failures, not by the task
+                # attempt number.  A Docker daemon restart commonly takes tens
+                # of seconds; retrying at 1s/2s/4s would exhaust the breaker
+                # before the daemon is back.
+                retry_not_before=self._backoff(infra_failures + 1, counts_budget=False),
                 reason="infra failure; retry does not consume the task retry budget",
             )
         if retries_left <= 0:
