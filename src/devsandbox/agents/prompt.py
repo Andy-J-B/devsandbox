@@ -18,6 +18,8 @@ _TRUNCATION_TEMPLATE = "\n[... truncated {count} characters ...]\n"
 
 _HARD_RULES = """\
 - Work only inside `/workspace`. Do not read or write outside it.
+- Make the change with the provided file-edit and shell tools. Do not paste
+  code as your final answer instead of editing the workspace.
 - Commit your work with git before finishing. The orchestrator validates the
   committed change set, not your uncommitted working tree.
 - Never modify the restricted paths listed below.

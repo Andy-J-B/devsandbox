@@ -44,6 +44,7 @@ def test_prompt_contains_task_sections_and_rules(tmp_path: Path) -> None:
     assert "Attempt number: 2" in prompt
     assert "check `unit` failed" in prompt
     assert "Work only inside `/workspace`" in prompt
+    assert "Make the change with the provided file-edit and shell tools" in prompt
     assert "Commit your work with git" in prompt
     assert "Never print, commit, log" in prompt
     assert "src/main.py" in prompt
