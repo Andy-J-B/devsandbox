@@ -1,0 +1,18 @@
+version: 1
+name: hello
+description: "Tiny demo project"
+mode: supervised # or autonomous
+repo:
+  path: /Users/Andy_1/dev/code/programs/GitHub/devsandbox
+  ref: main
+goals:
+  - "Add a hello.py script that prints hello"
+validation:
+  commands:
+    - name: smoke
+      run: "python3 hello.py"
+      required: true
+      kind: test
+limits:
+  max_retries: 1
+  task_timeout_seconds: 900
