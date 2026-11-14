@@ -89,6 +89,4 @@ async def test_engine_survives_repeated_identical_outage_errors(drill_env: objec
         and (event.payload_json or {}).get("kind") == "infra_error"
     ]
     assert len(infra_retries) == 3
-    assert not any(
-        (event.payload_json or {}).get("kind") == "repeated_failure" for event in events
-    )
+    assert not any((event.payload_json or {}).get("kind") == "repeated_failure" for event in events)

@@ -168,9 +168,7 @@ class DockerSandboxManager:
             log_socket = await asyncio.to_thread(self._attach_logs_socket, container)
         except (RequestException, DockerException) as exc:
             await asyncio.to_thread(self._remove_container_ignoring_errors, container)
-            raise SandboxError(
-                f"failed to attach log stream for {req.attempt_id}: {exc}"
-            ) from exc
+            raise SandboxError(f"failed to attach log stream for {req.attempt_id}: {exc}") from exc
         try:
             await asyncio.to_thread(container.start)
         except Exception as exc:
@@ -212,12 +210,12 @@ class DockerSandboxManager:
                 # docker-py raises ``requests.ConnectionError`` wrapping a read
                 # timeout on some daemon/transport versions.  Re-raise real
                 # connection failures instead of misreporting them as timeouts.
-                if isinstance(
-                    exc, (RequestsConnectionError, ChunkedEncodingError)
-                ) and "timed out" not in str(exc).lower():
+                if (
+                    isinstance(exc, (RequestsConnectionError, ChunkedEncodingError))
+                    and "timed out" not in str(exc).lower()
+                ):
                     raise SandboxError(
-                        f"lost connection to Docker while waiting for "
-                        f"{req.attempt_id}: {exc}"
+                        f"lost connection to Docker while waiting for {req.attempt_id}: {exc}"
                     ) from exc
                 timed_out = True
                 await asyncio.to_thread(container.kill, signal="SIGTERM")
@@ -264,9 +262,7 @@ class DockerSandboxManager:
                 raise SandboxError(
                     f"disk full while writing logs for {req.attempt_id}: {error}"
                 ) from error
-            raise SandboxError(
-                f"failed to stream logs for {req.attempt_id}: {error}"
-            ) from error
+            raise SandboxError(f"failed to stream logs for {req.attempt_id}: {error}") from error
 
         return SandboxResult(
             container_id=container_id,
