@@ -1,0 +1,53 @@
+# Constrained Docker socket proxy for DevSandbox (docs/deployment.md).
+#
+# The proxy is the only service that mounts docker.sock.  The orchestrator
+# connects with:
+#
+#   export DOCKER_HOST=tcp://127.0.0.1:23750
+#   devsandbox serve
+#
+# This is a defense-in-depth measure, NOT a replacement for rootless Docker:
+# POST /containers/create is still allowed, so a compromised orchestrator can
+# request a privileged container.  Use a dedicated daemon.
+#
+# Pin the proxy image by digest before production use:
+#   docker buildx imagetools inspect tecnativa/docker-socket-proxy:0.3
+# then replace the tag below with repo@sha256:<digest>.
+services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3
+    restart: unless-stopped
+    environment:
+      # API groups DevSandbox uses.
+      CONTAINERS: "1"   # create/start/stop/inspect/logs/attach/stats/exec
+      IMAGES: "1"       # get/pull
+      NETWORKS: "1"     # create/connect/remove (allowlist mode)
+      EXEC: "1"         # SandboxManager.exec_in
+      POST: "1"         # required for create/start/stop/exec
+      INFO: "1"         # docker_info()
+      PING: "1"
+      VERSION: "1"
+      # Everything else stays closed.  In particular, no build, swarm,
+      # secrets, configs, plugins, volumes, or system/events access.
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      CONFIGS: "0"
+      DISTRIBUTION: "0"
+      EVENTS: "0"
+      NODES: "0"
+      PLUGINS: "0"
+      SECRETS: "0"
+      SERVICES: "0"
+      SESSION: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      TASKS: "0"
+      VOLUMES: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      # Loopback only.  Never publish this port on a public interface.
+      - "127.0.0.1:23750:2375"
+    security_opt:
+      - no-new-privileges:true

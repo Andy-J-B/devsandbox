@@ -56,4 +56,5 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
 Security policy is derived only from settings via
 `devsandbox.config.policy.SecurityPolicy`. Validation checks can narrow the
 configured network/resources, but cannot widen them or receive agent secrets.
-See [validation.md](validation.md).
+See [validation.md](validation.md). For deployment guidance (rootless Docker or
+a constrained socket proxy) see [deployment.md](deployment.md).

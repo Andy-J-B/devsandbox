@@ -17,6 +17,9 @@ make check-all   # full gate: check + integration + security + E2E + soak
 make drills      # opt-in Docker/PostgreSQL/disk/idle operational drills
 ```
 
+Deployment guidance (rootless Docker and constrained socket proxies) is in
+[docs/deployment.md](docs/deployment.md).
+
 ## How to use
 
 CLI: start and run a project

@@ -264,7 +264,8 @@ attempt counters).
 service. It needs the Docker daemon; read the warnings in that file before
 using it. Running the orchestrator on the host (as above) is the preferred
 deployment, because mounting `docker.sock` grants host-root-equivalent access.
-Agent containers never receive the Docker socket.
+Agent containers never receive the Docker socket. For rootless Docker and a
+constrained socket-proxy recipe, see [deployment.md](deployment.md).
 
 ## Troubleshooting
 

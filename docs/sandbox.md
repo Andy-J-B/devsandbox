@@ -23,6 +23,9 @@ locked-down Docker container. It implements the `SandboxManager` protocol
 
 ## Security (enforced in `_build_container_kwargs`, unit-tested)
 
+Deployment-level Docker access (rootless Docker or a constrained socket proxy)
+is covered in [deployment.md](deployment.md).
+
 - Requested network policy can only be **narrowed**, never widened. `none` →
   `network_mode="none"`; `full` → default bridge. `allowlist` is not yet
   supported and raises `PolicyViolation` (it never falls back to `full`).

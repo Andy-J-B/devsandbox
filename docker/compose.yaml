@@ -5,9 +5,10 @@
 #   * The orchestrator needs the host Docker daemon to launch sandboxes.  This
 #     is a real trade-off: docker.sock access is effectively host root.  Prefer
 #     running the orchestrator on the host (`devsandbox serve`), or use a
-#     rootless/dedicated daemon with a restricted socket.  Never add
-#     docker.sock to agent-base/validator containers — the sandbox manager
-#     never passes it and those images have no Docker CLI.
+#     rootless/dedicated daemon with a restricted socket.  See
+#     docs/deployment.md for rootless Docker and a constrained socket-proxy
+#     recipe.  Never add docker.sock to agent-base/validator containers — the
+#     sandbox manager never passes it and those images have no Docker CLI.
 #   * The data root is bind-mounted at the SAME absolute path inside the
 #     container and on the host.  The Docker daemon resolves bind sources on
 #     the host, so container-only paths would break workspace mounts.
