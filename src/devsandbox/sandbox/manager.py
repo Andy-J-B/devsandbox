@@ -17,7 +17,9 @@ in ``tests/unit/test_sandbox.py``):
   / exceptions; set ``security.secret_dir`` to a host tmpfs to keep the files
   in memory,
 * the requested network policy can only be *narrowed* by policy, never
-  widened; ``allowlist`` is not yet supported and raises ``PolicyViolation``.
+  widened.  ``allowlist`` runs the attempt on a per-attempt internal Docker
+  network whose only reachable service is a per-attempt egress proxy; the
+  proxy is the only container with off-network access.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ import errno
 import os
 import shutil
 import threading
+import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -70,6 +74,16 @@ _WAIT_EXTRA_SECONDS = 60.0
 
 _MANAGED_LABEL = "devsandbox.managed"
 _ATTEMPT_LABEL = "devsandbox.attempt"
+_ROLE_LABEL = "devsandbox.role"
+
+# Allowlist egress.  One proxy container and one internal network per attempt;
+# the agent has no route off the internal network except to the proxy.
+_PROXY_PORT = 8888
+_PROXY_START_TIMEOUT_SECONDS = 30.0
+_PROXY_MEMORY_MB = 128
+_PROXY_PIDS_LIMIT = 64
+_PROXY_CPU_CORES = 0.5
+_NO_PROXY = "localhost,127.0.0.1,::1"
 
 # Secrets are written to a 0700 host directory and bind-mounted read-only at
 # /run/secrets.  A command wrapper exports each file and then execs the real
@@ -96,6 +110,40 @@ def _container_name(attempt_id: AttemptId) -> str:
     return f"ds-{attempt_id}"
 
 
+def _proxy_name(attempt_id: AttemptId) -> str:
+    """Deterministic egress proxy container name for an attempt."""
+    return f"ds-{attempt_id}-proxy"
+
+
+def _egress_network_name(attempt_id: AttemptId) -> str:
+    """Deterministic internal network name for an attempt."""
+    return f"ds-net-{attempt_id}"
+
+
+@dataclass(frozen=True)
+class _EgressRuntime:
+    """Live allowlist resources for one attempt."""
+
+    network_name: str
+    proxy_url: str
+    proxy_container: Any
+    network: Any
+
+
+def _proxy_environment(proxy_url: str) -> dict[str, str]:
+    """Return proxy env vars that cannot be overridden by the request env."""
+    return {
+        "HTTP_PROXY": proxy_url,
+        "HTTPS_PROXY": proxy_url,
+        "ALL_PROXY": proxy_url,
+        "http_proxy": proxy_url,
+        "https_proxy": proxy_url,
+        "all_proxy": proxy_url,
+        "NO_PROXY": _NO_PROXY,
+        "no_proxy": _NO_PROXY,
+    }
+
+
 def container_identity() -> tuple[int, int]:
     """Return the identity sandboxes run as: ``(uid, gid)``.
 
@@ -119,6 +167,19 @@ def _parse_created(value: str) -> datetime:
     text = value.strip()
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
+    # Docker emits nanosecond precision, which fromisoformat may reject.  Keep
+    # the first six fractional digits and preserve the timezone suffix.
+    if "." in text:
+        head, _, tail = text.partition(".")
+        digits = ""
+        rest = ""
+        for index, character in enumerate(tail):
+            if character.isdigit():
+                digits += character
+            else:
+                rest = tail[index:]
+                break
+        text = f"{head}.{digits[:6]}{rest}"
     return datetime.fromisoformat(text)
 
 
@@ -176,11 +237,6 @@ class DockerSandboxManager:
     async def _run_inner(self, req: SandboxRequest, secret_dir: Path | None) -> SandboxResult:
         # Policy checks that need no docker access happen first (fail fast).
         network = self._policy.effective_network(req.network)
-        if network.mode == "allowlist":
-            raise PolicyViolation(
-                "allowlist network mode is not supported in the MVP; "
-                "refusing to fall back to full network access"
-            )
         violation = self._policy.image_violation(req.image)
         if violation is not None:
             raise PolicyViolation(violation)
@@ -196,8 +252,25 @@ class DockerSandboxManager:
         self._prepare_directory(req.workspace_path, "workspace")
         await asyncio.to_thread(make_writable, req.workspace_path)
 
+        egress: _EgressRuntime | None = None
+        if network.mode == "allowlist":
+            egress = await asyncio.to_thread(self._start_allowlist_runtime, req, network)
+        try:
+            return await self._execute_attempt(req, network, resources, secret_dir, egress)
+        finally:
+            if egress is not None:
+                await asyncio.to_thread(self._stop_allowlist_runtime, egress)
+
+    async def _execute_attempt(
+        self,
+        req: SandboxRequest,
+        network: NetworkPolicy,
+        resources: ResourceProfile,
+        secret_dir: Path | None,
+        egress: _EgressRuntime | None,
+    ) -> SandboxResult:
         container = await asyncio.to_thread(
-            self._create_or_replace_container, req, network, resources, secret_dir
+            self._create_or_replace_container, req, network, resources, secret_dir, egress
         )
         container_id = container.id
         log_dir = self._data_root / "logs" / str(req.attempt_id)
@@ -407,6 +480,160 @@ class DockerSandboxManager:
         with contextlib.suppress(OSError):
             shutil.rmtree(secret_dir)
 
+    # -- allowlist egress --------------------------------------------------
+
+    def _start_allowlist_runtime(
+        self, req: SandboxRequest, network: NetworkPolicy
+    ) -> _EgressRuntime:
+        """Start the per-attempt internal network and egress proxy.
+
+        The agent is created on ``network_name`` only.  The proxy is attached
+        to the default bridge (for egress) and to the internal network (for
+        the agent), so it is the single controlled exit point.
+        """
+        if not network.allowed_hosts:
+            raise PolicyViolation("allowlist network mode requires at least one allowed host")
+        image = self._settings.security.allowlist_proxy_image
+        violation = self._policy.proxy_image_violation(image)
+        if violation is not None:
+            raise PolicyViolation(violation)
+        self._ensure_image(image)
+
+        # A retry can reuse the deterministic attempt id after a crash.  Remove
+        # the old agent container first so the old internal network can be
+        # removed rather than reused with a stale endpoint.
+        self._remove_container_by_name(_container_name(req.attempt_id))
+        self._remove_egress_resources(req.attempt_id)
+
+        labels = {
+            _MANAGED_LABEL: "true",
+            _ATTEMPT_LABEL: str(req.attempt_id),
+            _ROLE_LABEL: "egress",
+        }
+        network_name = _egress_network_name(req.attempt_id)
+        try:
+            network_obj = self._client.networks.create(
+                network_name,
+                driver="bridge",
+                internal=True,
+                labels=labels,
+                check_duplicate=True,
+            )
+        except (APIError, RequestException) as exc:
+            raise SandboxError(
+                f"failed to create egress network for {req.attempt_id}: {exc}"
+            ) from exc
+
+        proxy: Any | None = None
+        try:
+            uid, gid = container_identity()
+            proxy = self._client.containers.create(
+                image=image,
+                name=_proxy_name(req.attempt_id),
+                environment={
+                    "DEVSANDBOX_ALLOWED_HOSTS": ",".join(network.allowed_hosts),
+                    "DEVSANDBOX_PROXY_PORT": str(_PROXY_PORT),
+                },
+                labels=labels,
+                user=f"{uid}:{gid}",
+                cap_drop=["ALL"],
+                security_opt=["no-new-privileges"],
+                read_only=True,
+                tmpfs={"/tmp": "rw,mode=1777"},
+                mem_limit=f"{_PROXY_MEMORY_MB}m",
+                memswap_limit=f"{_PROXY_MEMORY_MB}m",
+                nano_cpus=int(_PROXY_CPU_CORES * 1_000_000_000),
+                pids_limit=_PROXY_PIDS_LIMIT,
+                network_mode="default",
+            )
+            network_obj.connect(proxy)
+            proxy.start()
+            self._wait_for_proxy_healthy(proxy, req.attempt_id)
+        except Exception:
+            if proxy is not None:
+                self._remove_container_ignoring_errors(proxy)
+            with contextlib.suppress(Exception):
+                network_obj.remove()
+            raise
+
+        return _EgressRuntime(
+            network_name=network_name,
+            proxy_url=f"http://{_proxy_name(req.attempt_id)}:{_PROXY_PORT}",
+            proxy_container=proxy,
+            network=network_obj,
+        )
+
+    def _wait_for_proxy_healthy(self, proxy: Any, attempt_id: AttemptId) -> None:
+        """Block until the proxy's image healthcheck reports ``healthy``."""
+        deadline = time.monotonic() + _PROXY_START_TIMEOUT_SECONDS
+        while True:
+            proxy.reload()
+            state = proxy.attrs.get("State", {}) or {}
+            status = state.get("Status")
+            if status in ("exited", "dead"):
+                logs = ""
+                with contextlib.suppress(Exception):
+                    raw = proxy.logs(tail=50)
+                    logs = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw)
+                raise SandboxError(
+                    f"egress proxy for {attempt_id} exited before becoming healthy: {logs}"
+                )
+            health = state.get("Health")
+            if health is None:
+                raise SandboxError(
+                    "egress proxy image must define a HEALTHCHECK "
+                    "so the manager can wait for readiness"
+                )
+            health_status = health.get("Status")
+            if health_status == "healthy":
+                return
+            if health_status == "unhealthy":
+                raise SandboxError(f"egress proxy for {attempt_id} is unhealthy")
+            if time.monotonic() >= deadline:
+                raise SandboxError(
+                    f"egress proxy for {attempt_id} did not become healthy within "
+                    f"{_PROXY_START_TIMEOUT_SECONDS:.0f}s"
+                )
+            time.sleep(0.2)
+
+    @staticmethod
+    def _stop_allowlist_runtime(runtime: _EgressRuntime) -> None:
+        """Best-effort removal of the proxy container and internal network."""
+        with contextlib.suppress(Exception):
+            runtime.proxy_container.remove(force=True)
+        with contextlib.suppress(Exception):
+            runtime.network.remove()
+
+    def _remove_container_by_name(self, name: str) -> None:
+        """Remove a deterministic container name if it exists."""
+        try:
+            container = self._client.containers.get(name)
+        except NotFound:
+            return
+        except (APIError, RequestException):
+            return
+        self._remove_container_ignoring_errors(container)
+
+    def _remove_egress_resources(self, attempt_id: AttemptId) -> None:
+        """Best-effort removal of stale per-attempt egress resources."""
+        try:
+            proxy = self._client.containers.get(_proxy_name(attempt_id))
+        except NotFound:
+            pass
+        except (APIError, RequestException):
+            pass
+        else:
+            self._remove_container_ignoring_errors(proxy)
+        try:
+            network = self._client.networks.get(_egress_network_name(attempt_id))
+        except NotFound:
+            pass
+        except (APIError, RequestException):
+            pass
+        else:
+            with contextlib.suppress(Exception):
+                network.remove()
+
     def _ensure_image(self, image: str) -> None:
         """Pull ``image`` if it is not already present locally."""
         try:
@@ -425,6 +652,7 @@ class DockerSandboxManager:
         network: NetworkPolicy,
         resources: ResourceProfile,
         secret_dir: Path | None,
+        egress: _EgressRuntime | None = None,
     ) -> Any:
         """Create (deterministically replacing any prior crashed container)."""
         name = _container_name(req.attempt_id)
@@ -439,7 +667,7 @@ class DockerSandboxManager:
                 f"failed to replace prior container for {req.attempt_id}: {exc}"
             ) from exc
 
-        kwargs = self._build_container_kwargs(req, network, resources, secret_dir)
+        kwargs = self._build_container_kwargs(req, network, resources, secret_dir, egress)
         try:
             return self._client.containers.create(**kwargs)
         except (APIError, RequestException) as exc:
@@ -456,6 +684,7 @@ class DockerSandboxManager:
         network: NetworkPolicy,
         resources: ResourceProfile,
         secret_dir: Path | None = None,
+        egress: _EgressRuntime | None = None,
     ) -> dict[str, Any]:
         """Build the docker ``containers.run`` kwargs.
 
@@ -523,6 +752,13 @@ class DockerSandboxManager:
         }
         if network.mode == "none":
             kwargs["network_mode"] = "none"
+        elif network.mode == "allowlist":
+            if egress is None:
+                raise SandboxError("allowlist network mode requires an egress runtime")
+            # Only the internal network is attached.  The proxy is the single
+            # reachable service and the single exit point.
+            kwargs["network_mode"] = egress.network_name
+            environment.update(_proxy_environment(egress.proxy_url))
         else:
             # "full": default bridge network (no host access beyond it).
             kwargs["network_mode"] = "default"
@@ -733,6 +969,42 @@ class DockerSandboxManager:
                 except APIError:  # best-effort
                     pass
                 removed.append(container.container_id)
+        removed.extend(await self._reap_egress_networks(known_attempt_ids, max_age_seconds, now))
+        return removed
+
+    async def _reap_egress_networks(
+        self,
+        known_attempt_ids: set[AttemptId],
+        max_age_seconds: float,
+        now: datetime,
+    ) -> list[str]:
+        """Remove managed egress networks left behind by crashed attempts."""
+        try:
+            networks = await asyncio.to_thread(
+                self._client.networks.list,
+                filters={"label": f"{_MANAGED_LABEL}=true"},
+            )
+        except (APIError, RequestException):
+            return []
+        removed: list[str] = []
+        for network in networks:
+            labels = dict(network.attrs.get("Labels") or {})
+            if labels.get(_ROLE_LABEL) != "egress":
+                continue
+            attempt = labels.get(_ATTEMPT_LABEL)
+            stale = attempt not in known_attempt_ids
+            created_raw = network.attrs.get("Created", "") or ""
+            if not stale and created_raw:
+                try:
+                    age = (now - _parse_created(created_raw)).total_seconds()
+                    stale = age > max_age_seconds
+                except ValueError:
+                    stale = False
+            if not stale:
+                continue
+            with contextlib.suppress(APIError, RequestException):
+                await asyncio.to_thread(network.remove)
+            removed.append(network.id)
         return removed
 
     def docker_info(self) -> dict[str, Any]:

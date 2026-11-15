@@ -13,11 +13,12 @@ from requests.exceptions import ChunkedEncodingError
 
 from devsandbox.common.errors import PolicyViolation, SandboxError
 from devsandbox.common.types import AttemptId, NetworkPolicy, ResourceProfile
-from devsandbox.config.settings import DevSandboxSettings
+from devsandbox.config.settings import DevSandboxSettings, SecurityConfig
 from devsandbox.sandbox.interfaces import SandboxRequest
 from devsandbox.sandbox.manager import (
     _TRUNCATION_MARKER,
     DockerSandboxManager,
+    _EgressRuntime,
     container_identity,
 )
 
@@ -27,7 +28,15 @@ class FakeContainer:
 
     def __init__(self, container_id: str = "container-1") -> None:
         self.id = container_id
-        self.attrs = {"State": {"Status": "running", "OOMKilled": False}}
+        self.attrs = {
+            "State": {
+                "Status": "running",
+                "OOMKilled": False,
+                # The egress proxy image defines a healthcheck; the fake is
+                # immediately healthy so allowlist unit tests do not sleep.
+                "Health": {"Status": "healthy"},
+            }
+        }
         self.labels = {"devsandbox.managed": "true"}
         self.started = False
         self.removed = False
@@ -149,10 +158,54 @@ class FakeContainers:
         return list(self._containers.values())
 
 
+class FakeNetwork:
+    def __init__(self, name: str, **kwargs: Any) -> None:
+        self.name = name
+        self.id = f"net-{name}"
+        self.attrs = {"Labels": kwargs.get("labels") or {}, "Created": ""}
+        self.removed = False
+        self.connected: list[Any] = []
+
+    def connect(self, container: Any) -> None:
+        self.connected.append(container)
+
+    def remove(self) -> None:
+        self.removed = True
+
+
+class FakeNetworks:
+    def __init__(self) -> None:
+        self._networks: dict[str, FakeNetwork] = {}
+        self.create_kwargs: list[tuple[str, dict[str, Any]]] = []
+        self.list_filters: dict[str, Any] | None = None
+
+    def create(self, name: str, **kwargs: Any) -> FakeNetwork:
+        network = FakeNetwork(name, **kwargs)
+        self._networks[name] = network
+        self.create_kwargs.append((name, kwargs))
+        return network
+
+    def get(self, name: str) -> FakeNetwork:
+        if name not in self._networks:
+            from docker.errors import NotFound
+
+            raise NotFound(name)
+        return self._networks[name]
+
+    def list(
+        self,
+        filters: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> list[FakeNetwork]:
+        self.list_filters = filters
+        return list(self._networks.values())
+
+
 class FakeDockerClient:
     def __init__(self) -> None:
         self.images = FakeImages()
         self.containers = FakeContainers()
+        self.networks = FakeNetworks()
         self.api = FakeAPI()
 
     def info(self) -> dict[str, Any]:
@@ -185,13 +238,14 @@ def _make_request(
     secret_files: dict[str, SecretStr] | None = None,
     secret_env: dict[str, SecretStr] | None = None,
     labels: dict[str, str] | None = None,
+    env: dict[str, str] | None = None,
 ) -> SandboxRequest:
     return SandboxRequest(
         attempt_id=AttemptId("attempt-1"),
         image=image,
         workspace_path=Path("/tmp/devsandbox-tests/workspaces/proj-1/attempt-1"),
         command=command or ["echo", "hi"],
-        env={},
+        env=env or {},
         secret_files=secret_files or {},
         secret_env=secret_env or {},
         resources=resources or ResourceProfile(),
@@ -312,13 +366,123 @@ def test_run_disallowed_image_raises_without_docker() -> None:
         asyncio.run(manager.run(req))
 
 
-def test_run_allowlist_network_raises_without_falling_back_to_full() -> None:
+def test_build_container_kwargs_allowlist_uses_internal_network_and_proxy_env() -> None:
     manager = _make_manager()
-    req = _make_request(network=NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"]))
-    with pytest.raises(PolicyViolation):
-        import asyncio
+    network = NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"])
+    req = _make_request(network=network, env={"HTTP_PROXY": "http://evil.invalid:3128"})
+    egress = _EgressRuntime(
+        network_name="ds-net-attempt-1",
+        proxy_url="http://ds-attempt-1-proxy:8888",
+        proxy_container=object(),
+        network=object(),
+    )
 
-        asyncio.run(manager.run(req))
+    kwargs = manager._build_container_kwargs(req, network, req.resources, egress=egress)
+
+    assert kwargs["network_mode"] == "ds-net-attempt-1"
+    environment = kwargs["environment"]
+    assert environment["HTTP_PROXY"] == "http://ds-attempt-1-proxy:8888"
+    assert environment["HTTPS_PROXY"] == "http://ds-attempt-1-proxy:8888"
+    assert environment["http_proxy"] == "http://ds-attempt-1-proxy:8888"
+    assert environment["NO_PROXY"] == "localhost,127.0.0.1,::1"
+    # The request environment cannot redirect the agent around the proxy.
+    assert "evil.invalid" not in environment["HTTP_PROXY"]
+
+
+def test_build_container_kwargs_allowlist_requires_egress_runtime() -> None:
+    manager = _make_manager()
+    network = NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"])
+    req = _make_request(network=network)
+    with pytest.raises(SandboxError, match="egress runtime"):
+        manager._build_container_kwargs(req, network, req.resources)
+
+
+def test_run_allowlist_creates_internal_network_and_proxy() -> None:
+    import asyncio
+
+    client = FakeDockerClient()
+    settings = DevSandboxSettings(
+        security=SecurityConfig(
+            allow_network_allowlist=True,
+            allowlist_hosts=["example.com"],
+        )
+    )
+    manager = _make_manager(settings=settings, client=client)
+    req = _make_request(network=NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"]))
+
+    asyncio.run(manager.run(req))
+
+    # First create is the proxy, second is the agent.
+    proxy_kwargs = client.containers.run_kwargs[0]
+    agent_kwargs = client.containers.run_kwargs[1]
+    assert proxy_kwargs["name"] == "ds-attempt-1-proxy"
+    assert proxy_kwargs["labels"]["devsandbox.role"] == "egress"
+    assert proxy_kwargs["labels"]["devsandbox.attempt"] == "attempt-1"
+    assert proxy_kwargs["environment"]["DEVSANDBOX_ALLOWED_HOSTS"] == "example.com"
+    assert proxy_kwargs["read_only"] is True
+    assert proxy_kwargs["cap_drop"] == ["ALL"]
+    assert proxy_kwargs["user"] != "0:0"
+
+    assert agent_kwargs["network_mode"] == "ds-net-attempt-1"
+    assert agent_kwargs["environment"]["HTTPS_PROXY"] == "http://ds-attempt-1-proxy:8888"
+
+    name, create_kwargs = client.networks.create_kwargs[0]
+    assert name == "ds-net-attempt-1"
+    assert create_kwargs["internal"] is True
+    network = client.networks.get("ds-net-attempt-1")
+    assert network.connected == [client.containers.get("ds-attempt-1-proxy")]
+    # Both the proxy and the network are removed when the attempt finishes.
+    assert client.containers.get("ds-attempt-1-proxy").removed is True
+    assert network.removed is True
+
+
+def test_reap_orphans_removes_stale_egress_networks() -> None:
+    import asyncio
+
+    client = FakeDockerClient()
+    manager = _make_manager(client=client)
+    egress_labels = {"devsandbox.managed": "true", "devsandbox.role": "egress"}
+    stale = client.networks.create(
+        "ds-net-old",
+        driver="bridge",
+        internal=True,
+        labels={**egress_labels, "devsandbox.attempt": "old"},
+        check_duplicate=True,
+    )
+    active = client.networks.create(
+        "ds-net-active",
+        driver="bridge",
+        internal=True,
+        labels={**egress_labels, "devsandbox.attempt": "active"},
+        check_duplicate=True,
+    )
+    other = client.networks.create(
+        "ds-other",
+        driver="bridge",
+        labels={"devsandbox.managed": "true", "devsandbox.attempt": "old"},
+        check_duplicate=True,
+    )
+
+    removed = asyncio.run(manager.reap_orphans({AttemptId("active")}))
+
+    assert stale.id in removed
+    assert stale.removed is True
+    assert active.removed is False
+    assert other.removed is False
+
+
+def test_run_allowlist_disabled_narrows_to_offline() -> None:
+    import asyncio
+
+    client = FakeDockerClient()
+    manager = _make_manager(client=client)
+    req = _make_request(network=NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"]))
+
+    asyncio.run(manager.run(req))
+
+    assert len(client.containers.run_kwargs) == 1
+    assert client.containers.run_kwargs[0]["network_mode"] == "none"
+    assert client.networks.create_kwargs == []
 
 
 class _ReadTimeoutContainer(FakeContainer):

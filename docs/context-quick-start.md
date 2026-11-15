@@ -67,6 +67,7 @@ final report: changes, tests, failures, outstanding work, split costs
 | `tests/unit|integration|e2e|security|contract/` | Test layers |
 | `docker/agent-base/` | Agent image (OpenCode + tools), build/smoke scripts |
 | `docker/validator-base/` | Validator image |
+| `docker/egress-proxy/` | Allowlist-mode HTTP/HTTPS egress proxy |
 | `docs/` | Module docs; start with `quickstart.md`, `cli.md`, `config.md` |
 | `plans/` | Authoritative build plan per module |
 
@@ -83,6 +84,7 @@ make up                 # PostgreSQL via docker compose
 make migrate            # alembic upgrade head
 docker/agent-base/build.sh
 docker build -t devsandbox/validator:latest docker/validator-base
+docker/egress-proxy/build.sh   # allowlist network mode
 ```
 
 ### Start the control plane

@@ -1,11 +1,12 @@
 # Image pinning and upgrades
 
-DevSandbox launches three kinds of container:
+DevSandbox launches four kinds of container:
 
 | Image | Built from | Default reference |
 | --- | --- | --- |
 | Agent | `docker/agent-base/Dockerfile` | `devsandbox/agent:latest` |
 | Validator | `docker/validator-base/Dockerfile` | `devsandbox/validator:latest` |
+| Egress proxy (allowlist mode) | `docker/egress-proxy/Dockerfile` | `devsandbox/egress-proxy:latest` |
 | Orchestrator | `docker/orchestrator/Dockerfile` | `devsandbox/orchestrator:local` |
 
 Tags such as `:latest` are mutable. A registry owner can repoint them, and a
@@ -16,6 +17,7 @@ content-addressed image references and set:
 ```bash
 DEVSANDBOX_AGENT__IMAGE=registry.example/devsandbox/agent@sha256:<digest>
 DEVSANDBOX_VALIDATION__IMAGE=registry.example/devsandbox/validator@sha256:<digest>
+DEVSANDBOX_SECURITY__ALLOWLIST_PROXY_IMAGE=registry.example/devsandbox/egress-proxy@sha256:<digest>
 DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES=true
 DEVSANDBOX_SECURITY__ALLOWED_IMAGES='["registry.example/devsandbox/agent@sha256:<digest>", "registry.example/devsandbox/validator@sha256:<digest>"]'
 ```
@@ -32,8 +34,8 @@ running the container. The accepted forms are:
 ## What is pinned in the repository
 
 - Base images are pinned by digest:
-  - `python:3.12-slim@sha256:5e2bdb1b...` in `docker/validator-base/Dockerfile`
-    and `docker/orchestrator/Dockerfile`;
+  - `python:3.12-slim@sha256:5e2bdb1b...` in `docker/validator-base/Dockerfile`,
+    `docker/egress-proxy/Dockerfile`, and `docker/orchestrator/Dockerfile`;
   - `node:22-bookworm-slim@sha256:e9f565d3...` in
     `docker/agent-base/Dockerfile`;
   - `postgres:16@sha256:f9a7b9eb...` in `docker/compose.yaml`.
@@ -43,10 +45,11 @@ running the container. The accepted forms are:
 - Validator Python tools are installed at exact versions:
   `pytest==9.2.0`, `pytest-asyncio==1.4.1.post1`, `ruff==0.17.4`.
 
-Application images (`devsandbox/agent`, `devsandbox/validator`) are still built
-locally with tags for development. That is intentional: a locally built image
-has no registry digest. Use the image ID form (`sha256:<id>`) if you want to
-exercise `require_pinned_images=true` without a registry.
+Application images (`devsandbox/agent`, `devsandbox/validator`,
+`devsandbox/egress-proxy`) are still built locally with tags for development.
+That is intentional: a locally built image has no registry digest. Use the
+image ID form (`sha256:<id>`) if you want to exercise
+`require_pinned_images=true` without a registry.
 
 ## Local development
 
@@ -55,6 +58,7 @@ Tags are fine:
 ```bash
 docker/agent-base/build.sh
 docker build -t devsandbox/validator:latest docker/validator-base
+docker/egress-proxy/build.sh
 ```
 
 Keep `DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES=false` (the default). To use a
@@ -63,8 +67,10 @@ locally built image with pinning enabled:
 ```bash
 AGENT_ID="$(docker image inspect --format '{{.Id}}' devsandbox/agent:latest)"
 VALIDATOR_ID="$(docker image inspect --format '{{.Id}}' devsandbox/validator:latest)"
+PROXY_ID="$(docker image inspect --format '{{.Id}}' devsandbox/egress-proxy:latest)"
 export DEVSANDBOX_AGENT__IMAGE="$AGENT_ID"
 export DEVSANDBOX_VALIDATION__IMAGE="$VALIDATOR_ID"
+export DEVSANDBOX_SECURITY__ALLOWLIST_PROXY_IMAGE="$PROXY_ID"
 export DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES=true
 ```
 
@@ -79,9 +85,11 @@ export DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES=true
    docker manifest inspect registry.example/devsandbox/agent:1.2.3 | jq -r '.config.digest'
    ```
 
-2. Set `DEVSANDBOX_AGENT__IMAGE` and `DEVSANDBOX_VALIDATION__IMAGE` to the
-   `repo@sha256:<digest>` form. Also set `security.allowed_images` to the same
-   references if you use the allowlist.
+2. Set `DEVSANDBOX_AGENT__IMAGE`, `DEVSANDBOX_VALIDATION__IMAGE`, and
+   `DEVSANDBOX_SECURITY__ALLOWLIST_PROXY_IMAGE` to the `repo@sha256:<digest>`
+   form. Also set `security.allowed_images` to the agent/validator references
+   if you use the image allowlist (the proxy image is operator-configured and
+   is checked for digest pinning only).
 3. Set `DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES=true`.
 4. Start the orchestrator and confirm startup and a validation check succeed.
    A stale tag reference now fails closed instead of pulling whatever the tag

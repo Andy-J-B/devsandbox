@@ -58,9 +58,9 @@ This document records the threat model, the hardening changes made during plan
 | F10 | Medium | Log/artifact API path traversal or symlink read. | **Mitigated** | `_log_path` resolves and confines reads to `<data_root>/logs` or `<data_root>/workspaces`; byte/line caps and redaction are applied. Tests: `tests/security/test_path_traversal.py`. |
 | F11 | Medium | Fork bomb / memory hog / log flood. | **Mitigated** | pids limit, memory limit + OOM detection, and capped logs with a truncation marker. Tests: `tests/security/test_resource_abuse.py`. |
 | F12 | Medium | Secret literals embedded in a project spec. | **Mitigated** | Recursive secret-field guard plus `extra="forbid"` spec models. Test: `test_spec_literal_secret_fields_are_rejected`. |
-| F13 | Low | `allowlist` network mode is not implemented; a naive fallback could widen access. | **Mitigated** | The sandbox manager raises `PolicyViolation` instead of falling back to full network. Test: `test_sandbox_rejects_allowlist_instead_of_widening`. |
+| F13 | Low | `allowlist` network mode could widen access if implemented as a fallback. | **Fixed** | Allowlist mode runs the attempt on a per-attempt internal Docker network whose only reachable service is a non-root, read-only egress proxy. Hosts are intersected with `security.allowlist_hosts`; an empty ceiling denies all traffic. The proxy rejects unlisted hosts and DNS names resolving to loopback/private/link-local addresses. Tests: `tests/security/test_allowlist.py` (allowed host succeeds, unlisted host gets 403, direct egress fails), `tests/unit/test_config_policy.py`, `tests/unit/test_sandbox.py`. |
 | F14 | Low | Unlisted container images could be used. | **Mitigated** | `allowed_images` is checked before any Docker call. Test: `test_sandbox_rejects_unlisted_image_before_docker`. |
-| F15 | Low | LLM provider egress can exfiltrate context or secrets if enabled. | **Accepted** | Network is off by default; when enabling a provider, use a scoped key and egress allowlisting/firewall. |
+| F15 | Low | LLM provider egress can exfiltrate context or secrets if enabled. | **Mitigated by allowlist / accepted for full** | Network is off by default. Prefer `network.mode=allowlist` with the provider host in `security.allowlist_hosts` and a scoped key; `full` remains an accepted residual risk. |
 | F16 | Low | Log capture could silently lose output from fast containers (observability, not confidentiality). | **Fixed** | The sandbox attaches to the log socket before starting the container. Unit/integration coverage: `tests/unit/test_sandbox.py`, `tests/integration/test_sandbox_manager.py::test_run_echo_captures_logs`. |
 
 No unresolved **high-severity** findings remain. F3/F5/F6/F15 are accepted MVP
@@ -75,7 +75,9 @@ daemon:
 - read-only root filesystem (`ReadonlyRootfs=true`);
 - non-root user (`uid=1000`);
 - pids limit present;
-- `NetworkMode=none` for the default policy;
+- `NetworkMode=none` for the default policy; allowlist attempts use a
+  per-attempt internal network whose only reachable service is the egress
+  proxy;
 - only the attempt workspace is mounted; no `/var/run`, no `docker.sock`;
 - host file reads, Docker socket access, metadata/loopback connections, and
   writes outside `/workspace` fail from inside the container.
@@ -103,8 +105,8 @@ daemon:
 | Docker daemon access is host-root equivalent. | The orchestrator must create/attach/kill containers. | Dedicated host/VM, rootless Docker (recommended), or a constrained socket proxy; see [deployment.md](deployment.md). A socket proxy alone does not contain a compromised orchestrator because container creation remains available. |
 | Secrets visible in `docker inspect` env. | **Fixed** for the agent path by file-based injection. | Use `security.secret_dir` on a host tmpfs if the secret files must not touch disk; daemon access remains host-root-equivalent (F3). |
 | No per-workspace disk quota. | Bind mounts inherit host disk; quotas are host/filesystem-specific. | XFS project quotas, overlay upperdir quota, or a per-project volume. |
-| LLM provider egress. | Real agents need provider access when enabled. | Egress allowlist and scoped provider keys; keep `allow_network_default=false` otherwise. |
-| `allowlist` network mode unimplemented. | Fails closed instead of widening access. | Implement with a DNS/HTTP proxy or per-container firewall. |
+| LLM provider egress. | Real agents need provider access when enabled. | Prefer `network.mode=allowlist` with a scoped provider host and a scoped key; keep `allow_network_default=false` otherwise. The allowlist proxy is an application-layer control, not a per-packet firewall. |
+| Allowlist proxy is an HTTP/HTTPS application proxy. | It cannot police non-HTTP protocols, and a compromised proxy process could be used as a general egress point by the agent. | Run the proxy non-root/read-only with `cap_drop=ALL`; pin its image by digest; use a per-container firewall or network policy if non-HTTP egress must be controlled. |
 | Main-branch merge path absent. | MVP only advances `devsandbox/<project>/staging`. | Add an explicit, policy-gated merge path if required. |
 
 ## 6. How to run the security suite

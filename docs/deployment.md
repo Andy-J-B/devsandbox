@@ -66,12 +66,13 @@ rootful daemon.
 
 ### Build the images in the rootless daemon
 
-The agent and validator images must exist in the same daemon the orchestrator
-uses:
+The agent, validator, and (for allowlist mode) egress-proxy images must exist
+in the same daemon the orchestrator uses:
 
 ```bash
 docker/agent-base/build.sh
 docker build -t devsandbox/validator:latest docker/validator-base
+docker/egress-proxy/build.sh
 ```
 
 The per-project data root must be writable by your user and readable/writable
@@ -92,9 +93,10 @@ devsandbox serve
 - Low-numbered published ports are not available. DevSandbox does not publish
   agent/validator ports; the API listens on loopback from the host process.
 - The rootless daemon uses `slirp4netns`/`pasta`. Verify that
-  `--network none` and the default bridge work on your kernel. If you use
-  allowlist networking, verify the egress-proxy recipe in
-  [sandbox.md](sandbox.md) on the same host.
+  `--network none`, the default bridge, and user-defined **internal** networks
+  work on your kernel. Allowlist mode creates a per-attempt internal network
+  plus a dual-homed egress proxy; run `DEVSANDBOX_E2E=1 pytest -q
+  tests/security/test_allowlist.py` on the deployment host before relying on it.
 - Storage drivers can differ. Run the smoke checks in
   [quickstart.md](quickstart.md) and `scripts/check-all.sh` after switching.
 - A rootless socket is owned by your user. If you run the orchestrator in a
@@ -164,8 +166,12 @@ host after experiments. Back up `<data_root>` if you need the audit history.
 - [ ] `security.allow_push` is `false` unless you have an explicit review
       process.
 - [ ] The Docker endpoint is not reachable by agent/validator containers.
-- [ ] `security.require_pinned_images=true` in production; agent and validator
-      images are referenced by digest. See [images.md](images.md).
+- [ ] `security.require_pinned_images=true` in production; agent, validator,
+      and egress-proxy images are referenced by digest. See
+      [images.md](images.md).
+- [ ] If allowlist egress is enabled, `security.allowlist_hosts` contains only
+      the required hosts and the proxy image is pinned. The proxy is an
+      HTTP/HTTPS application proxy, not a per-packet firewall.
 - [ ] The data root is on a dedicated filesystem with free-space monitoring
       (`limits.disk_min_free_mb`).
 - [ ] PostgreSQL is not exposed beyond loopback or a private network.

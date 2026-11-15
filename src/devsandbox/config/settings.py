@@ -7,6 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ..common.types import normalize_allowed_host
+
 
 class LimitsConfig(BaseModel):
     """Runtime resource limits and scheduling pressure thresholds."""
@@ -58,6 +60,14 @@ class SecurityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     allow_network_default: bool = False
+    # Allowlist egress is disabled by default.  When enabled, a request can
+    # only use hosts that also appear in ``allowlist_hosts``; an empty ceiling
+    # denies all allowlist traffic.
+    allow_network_allowlist: bool = False
+    allowlist_hosts: list[str] = Field(default_factory=list)
+    # Image for the per-attempt egress proxy.  The orchestrator starts one
+    # proxy container per allowlisted attempt on an internal Docker network.
+    allowlist_proxy_image: str = "devsandbox/egress-proxy:latest"
     allow_push: bool = False
     allow_autonomous_mode: bool = True
     allowed_images: list[str] = Field(default_factory=list)
@@ -70,6 +80,11 @@ class SecurityConfig(BaseModel):
     # <data_root>/secrets.  Point this at a host tmpfs (for example
     # /dev/shm/devsandbox-secrets on Linux) to keep secret files off disk.
     secret_dir: str | None = None
+
+    @field_validator("allowlist_hosts")
+    @classmethod
+    def _normalize_allowlist_hosts(cls, value: list[str]) -> list[str]:
+        return [normalize_allowed_host(entry) for entry in value]
 
 
 class ModelBudget(BaseModel):

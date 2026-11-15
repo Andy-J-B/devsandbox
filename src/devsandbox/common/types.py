@@ -2,13 +2,78 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .ids import AttemptId, PlanId, ProjectId
+
+# An allowlist entry is a hostname or IPv4 address with an optional port, and
+# an optional ``*.`` subdomain wildcard.  IPv6 literals are intentionally not
+# accepted yet; use a DNS name instead.
+_ALLOWED_HOST_RE = re.compile(
+    r"^(?:\*\.)?"
+    r"(?:[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?)"
+    r"(?:\.[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?)*"
+    r"(?::\d{1,5})?$"
+)
+
+
+def normalize_allowed_host(entry: str) -> str:
+    """Normalize and validate one allowlist entry.
+
+    Entries are lowercased, stripped, and must be a hostname/IPv4 address with
+    an optional ``*.`` prefix and an optional port.  A trailing dot is removed.
+    """
+    value = entry.strip().lower()
+    if value.endswith("."):
+        value = value[:-1]
+    if not value or not _ALLOWED_HOST_RE.match(value):
+        raise ValueError(f"invalid allowlist host entry: {entry!r}")
+    _host, port = split_allowed_host(value)
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError(f"allowlist port out of range: {entry!r}")
+    return value
+
+
+def split_allowed_host(entry: str) -> tuple[str, int | None]:
+    """Split a normalized allowlist entry into ``(host, port)``."""
+    host, separator, port_text = entry.rpartition(":")
+    if separator and port_text.isdigit() and ":" not in host:
+        return host, int(port_text)
+    return entry, None
+
+
+def host_matches_allowlist(host: str, port: int, entries: Sequence[str]) -> bool:
+    """Return whether ``host:port`` is allowed by ``entries``.
+
+    An entry without a port allows only the standard HTTP(S) ports (80/443);
+    use an explicit ``host:port`` entry for other services.  ``*.example.com``
+    matches subdomains but not the apex domain itself.
+    """
+    normalized_host = host.strip().lower().rstrip(".")
+    for entry in entries:
+        allowed_host, allowed_port = split_allowed_host(entry)
+        if allowed_port is not None:
+            if port != allowed_port:
+                continue
+        elif port not in (80, 443):
+            continue
+        if allowed_host.startswith("*."):
+            suffix = allowed_host[2:]
+            if normalized_host.endswith("." + suffix):
+                return True
+        elif normalized_host == allowed_host:
+            return True
+    return False
+
+
+def _validate_allowed_hosts(value: list[str]) -> list[str]:
+    return [normalize_allowed_host(entry) for entry in value]
 
 
 class TaskStatus(StrEnum):
@@ -87,6 +152,11 @@ class NetworkPolicy(BaseModel):
     mode: Literal["none", "allowlist", "full"] = "none"
     allowed_hosts: list[str] = Field(default_factory=list)
 
+    @field_validator("allowed_hosts")
+    @classmethod
+    def _validate_hosts(cls, value: list[str]) -> list[str]:
+        return _validate_allowed_hosts(value)
+
 
 class CheckSpec(BaseModel):
     """A validation check executed inside a sandbox.
@@ -113,6 +183,11 @@ class CheckSpec(BaseModel):
     kind: Literal["test", "lint", "build", "setup", "other"] = "other"
     network: Literal["none", "allowlist", "full"] = "none"
     allowed_hosts: list[str] = Field(default_factory=list)
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def _validate_hosts(cls, value: list[str]) -> list[str]:
+        return _validate_allowed_hosts(value)
 
     @model_validator(mode="after")
     def _validate_check(self) -> CheckSpec:

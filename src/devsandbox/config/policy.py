@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import re
 
-from ..common.types import NetworkPolicy, ResourceProfile
+from ..common.types import (
+    NetworkPolicy,
+    ResourceProfile,
+    host_matches_allowlist,
+    split_allowed_host,
+)
 from .settings import DevSandboxSettings
 
 # A digest reference is a registry manifest reference (``repo@sha256:<64 hex>``)
@@ -38,12 +43,54 @@ class SecurityPolicy:
         return self._settings
 
     def effective_network(self, task_requested: NetworkPolicy) -> NetworkPolicy:
-        """Narrow the requested network policy to the effective policy."""
+        """Narrow the requested network policy to the effective policy.
+
+        ``full`` is allowed only when ``allow_network_default`` is true.
+        ``allowlist`` is allowed only when ``allow_network_allowlist`` is true
+        *and* the requested hosts are covered by ``allowlist_hosts``.  An
+        empty request or empty policy ceiling therefore narrows to ``none``.
+        """
         mode = task_requested.mode
         if mode == "full" and not self._settings.security.allow_network_default:
             mode = "none"
-        allowed_hosts = task_requested.allowed_hosts if mode == "allowlist" else []
-        return NetworkPolicy(mode=mode, allowed_hosts=list(allowed_hosts))
+        allowed_hosts: list[str] = []
+        if mode == "allowlist":
+            if not self._settings.security.allow_network_allowlist:
+                mode = "none"
+            else:
+                ceiling = self._settings.security.allowlist_hosts
+                allowed_hosts = self._narrow_hosts(task_requested.allowed_hosts, ceiling)
+                if not allowed_hosts:
+                    mode = "none"
+        return NetworkPolicy(mode=mode, allowed_hosts=allowed_hosts)
+
+    @staticmethod
+    def _narrow_hosts(requested: list[str], ceiling: list[str]) -> list[str]:
+        """Return requested entries that are covered by the policy ceiling."""
+        if not ceiling:
+            return []
+        narrowed: list[str] = []
+        for entry in requested:
+            if entry.startswith("*."):
+                # A wildcard request is only narrowed to an identical wildcard
+                # in policy; inferring coverage from broader patterns is easy
+                # to get wrong, so fail closed.
+                if entry in ceiling:
+                    narrowed.append(entry)
+                continue
+            host, port = split_allowed_host(entry)
+            if port is not None:
+                covered = host_matches_allowlist(host, port, ceiling)
+            else:
+                # An entry without a port permits both 80 and 443.  Require
+                # both to be covered so the narrowed entry cannot widen the
+                # policy ceiling's ports.
+                covered = host_matches_allowlist(host, 80, ceiling) and host_matches_allowlist(
+                    host, 443, ceiling
+                )
+            if covered:
+                narrowed.append(entry)
+        return narrowed
 
     def effective_resources(self, requested: ResourceProfile) -> ResourceProfile:
         """Clamp the requested resources to policy maxima."""
@@ -73,6 +120,21 @@ class SecurityPolicy:
         if self._settings.security.require_pinned_images and not is_digest_pinned(image):
             return (
                 f"image is not pinned by digest: {image} "
+                "(set security.require_pinned_images=false only for local development)"
+            )
+        return None
+
+    def proxy_image_violation(self, image: str) -> str | None:
+        """Return a policy violation for the egress proxy image, or ``None``.
+
+        The proxy image is operator-configured (never spec-controlled), so the
+        agent/validator image allowlist does not apply.  The digest-pinning
+        requirement does apply, because an unpinned proxy is part of the
+        network trust boundary.
+        """
+        if self._settings.security.require_pinned_images and not is_digest_pinned(image):
+            return (
+                f"egress proxy image is not pinned by digest: {image} "
                 "(set security.require_pinned_images=false only for local development)"
             )
         return None

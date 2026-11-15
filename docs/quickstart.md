@@ -27,10 +27,11 @@ docker compose -f docker/compose.yaml up -d postgres
 # Build the images the sandbox manager launches
 docker/agent-base/build.sh
 docker build -t devsandbox/validator:latest docker/validator-base
+docker/egress-proxy/build.sh   # only needed for allowlist network mode
 ```
 
-Local development uses image tags. Production deployments must pin the agent
-and validator images by digest and set
+Local development uses image tags. Production deployments must pin the agent,
+validator, and egress-proxy images by digest and set
 `DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES=true`; see
 [images.md](images.md) for the upgrade process.
 

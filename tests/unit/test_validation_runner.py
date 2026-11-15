@@ -223,14 +223,22 @@ async def test_working_dir_escape_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_allowlist_network_is_rejected(tmp_path: Path) -> None:
+async def test_allowlist_network_is_forwarded_to_sandbox(tmp_path: Path) -> None:
     sandbox = FakeSandboxManager()
+    sandbox.queue_result(_result(tmp_path))
+    settings = DevSandboxSettings(
+        security=SecurityConfig(
+            allow_network_allowlist=True,
+            allowlist_hosts=["pypi.org"],
+        )
+    )
     runner = _runner(
         sandbox,
         tmp_path,
         config=ValidationConfig(
             network=NetworkPolicy(mode="allowlist", allowed_hosts=["pypi.org"])
         ),
+        policy=SecurityPolicy(settings),
     )
     result = await runner.run_check(
         CheckSpec(
@@ -244,9 +252,10 @@ async def test_allowlist_network_is_rejected(tmp_path: Path) -> None:
         attempt_id="a1",
     )
 
-    assert result.status == "error"
-    assert result.failure_kind is FailureKind.INFRA_ERROR
-    assert sandbox.calls == []
+    assert result.status == "passed"
+    assert len(sandbox.calls) == 1
+    assert sandbox.calls[0].network.mode == "allowlist"
+    assert sandbox.calls[0].network.allowed_hosts == ["pypi.org"]
 
 
 @pytest.mark.asyncio

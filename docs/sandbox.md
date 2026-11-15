@@ -27,8 +27,17 @@ Deployment-level Docker access (rootless Docker or a constrained socket proxy)
 is covered in [deployment.md](deployment.md).
 
 - Requested network policy can only be **narrowed**, never widened. `none` →
-  `network_mode="none"`; `full` → default bridge. `allowlist` is not yet
-  supported and raises `PolicyViolation` (it never falls back to `full`).
+  `network_mode="none"`; `full` → default bridge. `allowlist` runs the attempt
+  on a per-attempt **internal** Docker network (`ds-net-<attempt_id>`) whose
+  only reachable service is a per-attempt egress proxy
+  (`ds-<attempt_id>-proxy`). The agent gets `HTTP_PROXY`/`HTTPS_PROXY` (and
+  lowercase variants) pointing at the proxy; it has no route off the internal
+  network. The proxy is the only container attached to both the internal
+  network and the default bridge, and it forwards only hosts in the effective
+  allowlist. Allowlist mode requires
+  `security.allow_network_allowlist=true`; hosts are intersected with
+  `security.allowlist_hosts`, so a request can never widen the operator's
+  ceiling. An empty ceiling denies all allowlist traffic.
 - Images are checked against `SecurityPolicy.image_allowed` before being
   pulled/run.
 - Resources are clamped via `SecurityPolicy.effective_resources`.
@@ -49,16 +58,21 @@ is covered in [deployment.md](deployment.md).
 ## Deterministic naming (00 §8.5)
 
 - Container: `ds-<attempt_id>`
+- Egress proxy (allowlist mode): `ds-<attempt_id>-proxy`
+- Internal network (allowlist mode): `ds-net-<attempt_id>`
 - Logs: `<data_root>/logs/<attempt_id>/{stdout,stderr}.log`
 - Branch/workspace naming is owned by the git manager (plan 03).
 - Labels: `devsandbox.managed=true`, `devsandbox.attempt`, plus caller-supplied
-  `devsandbox.project` / `devsandbox.task` via `req.labels`.
+  `devsandbox.project` / `devsandbox.task` via `req.labels`. Egress resources
+  also carry `devsandbox.role=egress` so recovery can reap them.
 
 ## Idempotency & recovery
 
 `run` replaces a container left behind by a prior crash (same attempt id)
 rather than duplicating it. `reap_orphans` destroys containers whose attempt is
-not active or that exceed `max_age_seconds` (janitor, plan 08).
+not active or that exceed `max_age_seconds` (janitor, plan 08), and removes
+stale `devsandbox.role=egress` networks left behind by crashed allowlist
+attempts.
 
 ## Images
 
@@ -67,10 +81,18 @@ not active or that exceed `max_age_seconds` (janitor, plan 08).
   build-essential, pre-installed pytest/pytest-asyncio/ruff) so common Python
   checks run without network access. Build it with
   `docker build -t devsandbox/validator:latest docker/validator-base`.
+- `docker/egress-proxy/Dockerfile`: stdlib-only HTTP/HTTPS `CONNECT` proxy for
+  allowlist mode. Build it with `docker/egress-proxy/build.sh`. The image runs
+  non-root with a read-only rootfs, drops all capabilities, and refuses to
+  start with an empty allowlist. Set
+  `DEVSANDBOX_SECURITY__ALLOWLIST_PROXY_IMAGE` to a pinned reference in
+  production.
 - `ensure_image(image)` pulls the image when it is not present locally.
 - `security.require_pinned_images` rejects tag references before any Docker
   call; production deployments should pin the agent/validator images by digest
-  and allowlist them. See [images.md](images.md) for the upgrade process.
+  and allowlist them. The same setting also rejects an unpinned
+  `security.allowlist_proxy_image`. See [images.md](images.md) for the upgrade
+  process.
 
 ## Testing
 
@@ -78,6 +100,10 @@ not active or that exceed `max_age_seconds` (janitor, plan 08).
   request→docker kwargs mapping (asserts no `docker.sock`, `cap_drop`,
   limits, read-only rootfs), log truncation, and redaction of canary secrets.
 - Integration tests: `tests/integration/test_sandbox.py` (Docker, `@pytest.mark.docker`).
+- Allowlist security tests: `tests/security/test_allowlist.py` (real Docker,
+  `DEVSANDBOX_E2E=1`) — allowlisted host succeeds through the proxy, unlisted
+  host gets `403`, direct egress from the internal network fails, and the proxy
+  is non-root/read-only with the internal network attached.
 - Fake: `tests/fakes/FakeSandboxManager` — scriptable exit codes, timeout,
   OOM, delays; records requests.
 

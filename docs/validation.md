@@ -73,7 +73,10 @@ Each check gets a new container from the configured validator image:
 - the agent's container is never reused;
 - `secret_files={}` — validation containers receive **no agent secrets**;
 - network is `none` by default; a check may request `allowlist`/`full`, but the
-  policy can only narrow it (and `allowlist` is rejected by the MVP sandbox);
+  policy can only narrow it. `allowlist` requires
+  `security.allow_network_allowlist=true` and is intersected with
+  `security.allowlist_hosts`; the check runs through the same per-attempt
+  internal-network + egress-proxy path as agent attempts;
 - resources are clamped by `SecurityPolicy.effective_resources`;
 - stdout/stderr are redacted, size-capped, and only tails are retained;
 - the container is destroyed in a `finally` block.

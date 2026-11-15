@@ -120,8 +120,9 @@ No secret value is ever written to the config: the key is referenced as
   `OPENCODE_DISABLE_EXTERNAL_SKILLS=1`.
 - The sandbox network policy is the real backstop: `network=none` gives the
   container no route at all, so any telemetry/update attempt fails closed.
-  OpenCode 1 does not expose a separate documented telemetry switch; the
-  container-level network policy is authoritative.
+  `network.mode=allowlist` restricts egress to an operator allowlist through a
+  per-attempt proxy. OpenCode 1 does not expose a separate documented telemetry
+  switch; the container-level network policy is authoritative.
 
 ### Output and exit codes
 
@@ -164,11 +165,13 @@ model id itself contains a slash.
 
 The adapter renders an OpenAI-compatible provider using `base_url`. Ollama
 does not require a key, so `secret_ref` can be omitted. The container needs
-network access to the host endpoint; the current sandbox manager does not
-implement `allowlist` network mode, so use `full` egress
-(`security.allow_network_default=true`; still restricted by the host/container
-network setup) or add allowlist support in plan 02. A project spec cannot widen
-this policy.
+network access to the host endpoint. For a public provider, prefer
+`network.mode=allowlist` with the provider host in `security.allowlist_hosts`.
+For a host-local endpoint such as Ollama, the allowlist proxy deliberately
+rejects DNS names that resolve to private addresses, so either use `full`
+egress (`security.allow_network_default=true`; still restricted by the
+host/container network setup) or allowlist the literal host bridge address
+(for example `172.17.0.1:11434`). A project spec cannot widen this policy.
 
 For a live smoke test the important property is that the local model returns
 real OpenAI `tool_calls` (not a JSON blob in `message.content`) and can follow

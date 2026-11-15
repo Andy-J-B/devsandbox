@@ -10,12 +10,19 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   `cpu_headroom_pct`, `mem_headroom_pct`, `disk_min_free_mb`,
   `pressure_cpu_pct`, `pressure_mem_pct`
 - `retries`: `default_max_retries`, `backoff_base_seconds`, `backoff_max_seconds`
-- `security`: `allow_network_default`, `allow_push`,
+- `security`: `allow_network_default`, `allow_network_allowlist` (enable
+  allowlist egress; off by default), `allowlist_hosts` (operator ceiling; a JSON
+  list of `host` or `host:port` entries, optional `*.` subdomain wildcard; an
+  empty ceiling denies all allowlist traffic), `allowlist_proxy_image` (egress
+  proxy image; default `devsandbox/egress-proxy:latest`), `allow_push`,
   `allow_autonomous_mode` (supervised → autonomous escalation), `allowed_images`,
-  `require_pinned_images` (reject tag-based agent/validator images; see
+  `require_pinned_images` (reject tag-based agent/validator/proxy images; see
   [images.md](images.md)), `secret_dir` (optional host directory for per-attempt
   secret files; defaults to `<data_root>/secrets`; point it at a host tmpfs such
   as `/dev/shm/devsandbox-secrets` to keep secrets off disk)
+  - Allowlist entries without a port permit only ports 80/443; use
+    `host:port` for anything else. Requests are intersected with this ceiling,
+    so a project spec can narrow the list but never add a host.
 - `api`: `host` (default `127.0.0.1`), `port`, `token` (prefer the top-level
   `DEVSANDBOX_API_TOKEN` alias), `max_spec_bytes`, `max_log_bytes`,
   `max_log_lines`, `expensive_rate_limit_per_minute`, `request_id_header`,

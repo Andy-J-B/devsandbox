@@ -49,11 +49,14 @@ def test_network_can_only_be_narrowed_by_policy() -> None:
     assert denied.effective_network(NetworkPolicy(mode="none")).mode == "none"
     assert denied.effective_network(NetworkPolicy(mode="full")).mode == "none"
     assert allowed.effective_network(NetworkPolicy(mode="full")).mode == "full"
-    # Allowlist mode is preserved here; the sandbox manager still refuses it
-    # rather than silently widening it to full network access.
-    assert allowed.effective_network(
-        NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"])
-    ).allowed_hosts == ["example.com"]
+    # Allowlist egress is a separate opt-in.  Enabling full network access does
+    # not implicitly enable allowlist mode.
+    assert (
+        allowed.effective_network(
+            NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"])
+        ).mode
+        == "none"
+    )
 
 
 def test_resources_are_clamped_to_policy_maxima() -> None:
@@ -81,10 +84,23 @@ def _request(tmp_path: Path, *, image: str, network: NetworkPolicy) -> SandboxRe
     )
 
 
-def test_sandbox_rejects_allowlist_instead_of_widening(tmp_path: Path) -> None:
+def test_sandbox_does_not_widen_allowlist_when_policy_disabled(tmp_path: Path) -> None:
     manager = DockerSandboxManager(_settings(), tmp_path, client=object())
-    with pytest.raises(PolicyViolation, match="allowlist"):
-        _run(manager, _request(tmp_path, image="good:img", network=NetworkPolicy(mode="allowlist")))
+    effective = manager._policy.effective_network(
+        NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"])
+    )
+    assert effective.mode == "none"
+    assert effective.allowed_hosts == []
+
+
+def test_sandbox_allowlist_empty_ceiling_denies_all(tmp_path: Path) -> None:
+    settings = _settings(allow_network_allowlist=True)
+    manager = DockerSandboxManager(settings, tmp_path, client=object())
+    effective = manager._policy.effective_network(
+        NetworkPolicy(mode="allowlist", allowed_hosts=["example.com"])
+    )
+    assert effective.mode == "none"
+    assert effective.allowed_hosts == []
 
 
 def test_sandbox_rejects_unlisted_image_before_docker(tmp_path: Path) -> None:

@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from devsandbox.common.types import NetworkPolicy, ResourceProfile
+from devsandbox.common.types import (
+    NetworkPolicy,
+    ResourceProfile,
+    host_matches_allowlist,
+)
 from devsandbox.config.policy import SecurityPolicy, is_digest_pinned
 from devsandbox.config.settings import (
     AgentConfig,
@@ -89,6 +93,40 @@ def test_image_allowlist_is_checked_before_pinning() -> None:
     assert "not allowed" in violation
 
 
+def test_proxy_image_pinning_is_optional_for_local_development() -> None:
+    policy = SecurityPolicy(DevSandboxSettings())
+    assert policy.proxy_image_violation("devsandbox/egress-proxy:latest") is None
+
+
+def test_proxy_image_pinning_rejects_tags_when_required() -> None:
+    settings = DevSandboxSettings(security=SecurityConfig(require_pinned_images=True))
+    policy = SecurityPolicy(settings)
+
+    violation = policy.proxy_image_violation("devsandbox/egress-proxy:latest")
+
+    assert violation is not None
+    assert "not pinned by digest" in violation
+    assert policy.proxy_image_violation(DIGEST_IMAGE) is None
+
+
+@pytest.mark.parametrize(
+    "entry",
+    ["http://example.com", "example.com/path", "example.com:99999", "", "*.", "exa mple.com"],
+)
+def test_invalid_allowlist_entries_are_rejected(entry: str) -> None:
+    with pytest.raises(ValidationError):
+        NetworkPolicy(mode="allowlist", allowed_hosts=[entry])
+
+
+def test_allowlist_host_matching_handles_wildcards_and_ports() -> None:
+    entries = ["*.example.com:443", "api.test.com"]
+    assert host_matches_allowlist("a.example.com", 443, entries)
+    assert not host_matches_allowlist("example.com", 443, entries)
+    assert host_matches_allowlist("api.test.com", 80, entries)
+    assert host_matches_allowlist("api.test.com", 443, entries)
+    assert not host_matches_allowlist("api.test.com", 8080, entries)
+
+
 def test_policy_max_retries_caps_request() -> None:
     policy = SecurityPolicy(DevSandboxSettings())
     assert policy.max_retries(10) == 2
@@ -103,13 +141,59 @@ def test_effective_network_narrows_to_none() -> None:
     assert effective.allowed_hosts == []
 
 
-def test_effective_network_allowlist_honors_request() -> None:
+def test_effective_network_allowlist_is_disabled_by_default() -> None:
     policy = SecurityPolicy(DevSandboxSettings())
     effective = policy.effective_network(
         NetworkPolicy(mode="allowlist", allowed_hosts=["api.openai.com"])
     )
+    assert effective.mode == "none"
+    assert effective.allowed_hosts == []
+
+
+def test_effective_network_allowlist_intersects_with_policy_ceiling() -> None:
+    settings = DevSandboxSettings(
+        security=SecurityConfig(
+            allow_network_allowlist=True,
+            allowlist_hosts=["api.openai.com", "github.com"],
+        )
+    )
+    policy = SecurityPolicy(settings)
+    effective = policy.effective_network(
+        NetworkPolicy(
+            mode="allowlist",
+            allowed_hosts=["api.openai.com", "evil.example"],
+        )
+    )
     assert effective.mode == "allowlist"
     assert effective.allowed_hosts == ["api.openai.com"]
+
+
+def test_effective_network_allowlist_empty_ceiling_denies_all() -> None:
+    settings = DevSandboxSettings(security=SecurityConfig(allow_network_allowlist=True))
+    policy = SecurityPolicy(settings)
+    effective = policy.effective_network(
+        NetworkPolicy(mode="allowlist", allowed_hosts=["api.openai.com"])
+    )
+    assert effective.mode == "none"
+    assert effective.allowed_hosts == []
+
+
+def test_effective_network_allowlist_does_not_widen_ports() -> None:
+    settings = DevSandboxSettings(
+        security=SecurityConfig(
+            allow_network_allowlist=True,
+            allowlist_hosts=["registry.example:443"],
+        )
+    )
+    policy = SecurityPolicy(settings)
+    effective = policy.effective_network(
+        NetworkPolicy(
+            mode="allowlist",
+            allowed_hosts=["registry.example:8080", "registry.example"],
+        )
+    )
+    assert effective.mode == "none"
+    assert effective.allowed_hosts == []
 
 
 def test_effective_resources_clamped_to_policy_maxima() -> None:

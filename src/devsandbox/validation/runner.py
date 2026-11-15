@@ -250,13 +250,6 @@ class CheckRunner:
         )
         if self._policy is not None:
             network = self._policy.effective_network(network)
-        if network.mode == "allowlist":
-            return self._error_result(
-                check,
-                display,
-                FailureKind.INFRA_ERROR,
-                "allowlist network mode is not supported by the MVP sandbox",
-            )
         if self._policy is not None:
             violation = self._policy.image_violation(self._config.image)
             if violation is not None:
