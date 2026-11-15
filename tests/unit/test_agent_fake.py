@@ -141,7 +141,7 @@ async def test_fake_script_adapter_builds_sandbox_request(tmp_path: Path) -> Non
         make_settings(),
         image="agent-test:latest",
         mode="touch-restricted",
-        secret_env={"DEVSANDBOX_FAKE_SECRET": SecretStr("canary")},
+        secret_files={"DEVSANDBOX_FAKE_SECRET": SecretStr("canary")},
     )
     sandbox.queue_result(sandbox_result(*write_logs(tmp_path, stdout="FAKE_AGENT_SUMMARY: ok\n")))
 
@@ -155,8 +155,8 @@ async def test_fake_script_adapter_builds_sandbox_request(tmp_path: Path) -> Non
     assert "--touch-restricted" in call.command
     assert call.env["DEVSANDBOX_ATTEMPT"] == "attempt-1"
     assert call.env["DEVSANDBOX_TASK"] == "task-1"
-    assert call.secret_env["DEVSANDBOX_FAKE_SECRET"].get_secret_value() == "canary"
-    assert call.secret_env["DEVSANDBOX_FAKE_SECRET"].get_secret_value() not in " ".join(
+    assert call.secret_files["DEVSANDBOX_FAKE_SECRET"].get_secret_value() == "canary"
+    assert call.secret_files["DEVSANDBOX_FAKE_SECRET"].get_secret_value() not in " ".join(
         call.command
     )
 

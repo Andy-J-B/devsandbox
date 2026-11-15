@@ -50,7 +50,7 @@ This document records the threat model, the hardening changes made during plan
 | F2 | High | Default `security.allow_network_default` was `True`, contrary to the authoritative default (off). | **Fixed** | Default is now `False`; `effective_network` narrows `full` to `none`. Tests: `test_network_defaults_to_off`, `test_network_can_only_be_narrowed_by_policy`. |
 | F3 | High | Orchestrator requires Docker daemon access; a compromised orchestrator is host-root equivalent. | **Accepted / mitigated by deployment** | Documented residual risk. Deploy on a dedicated host/VM, use rootless Docker (recommended) or a constrained socket proxy, and never expose the daemon to the agent container. Recipes: [`deployment.md`](deployment.md), [`docker/socket-proxy/compose.yaml`](../docker/socket-proxy/compose.yaml). |
 | F4 | High | Agent container is untrusted and may attempt escapes. | **Mitigated** | `--privileged` never set, `cap_drop: ALL`, `no-new-privileges`, read-only rootfs, non-root uid 1000, pids/memory/CPU limits, `network_mode=none` by default, only the workspace bind-mounted, no Docker socket. Tests: `tests/security/test_container_isolation.py`. |
-| F5 | Medium | Secrets injected as container env are visible to anyone who can run `docker inspect`. | **Accepted** | Daemon access is already host-root-equivalent. Secrets are never placed in the command, labels, logs, reports, or workspace; the redactor covers registered secrets and token patterns. Tests: `tests/security/test_secrets.py`. |
+| F5 | Medium | Secrets injected as container env are visible to anyone who can run `docker inspect`. | **Fixed (file-based injection)** | Secrets are written to a private `0700` host directory and bind-mounted read-only at `/run/secrets`; a wrapper exports them before `exec`. Values are never in the command, labels, logs, reports, workspace, or container environment. Set `security.secret_dir` to a host tmpfs to keep the files in memory. Tests: `tests/security/test_secrets.py::test_secret_is_not_visible_through_docker_inspect`. |
 | F6 | Medium | `disk_mb` is a policy field but no per-container/per-workspace disk quota is enforced; workspace is a bind mount. | **Accepted / follow-up** | Scheduler enforces `disk_min_free_mb`; validation caps changed files/diff lines; log output is capped. For multi-tenant use, add project quotas or an overlay/XFS project quota. Test evidence: `test_log_flood_is_capped`; disk-fill is documented, not claimed contained. |
 | F7 | Medium | Agent hooks in an untrusted workspace could run on the host. | **Mitigated** | Every Git subprocess uses `core.hooksPath=/dev/null`; executable non-sample hooks are rejected. Tests: `test_executable_hook_is_rejected_and_never_runs`. |
 | F8 | Medium | Symlink escapes, `.gitmodules`, and `.git/**` edits could smuggle host content or rewrite history. | **Mitigated** | `_reject_dangerous_content` rejects symlinks resolving outside the workspace, `.gitmodules`, and `.git/**`. Tests: `test_symlink_escape_is_rejected`, `test_submodule_metadata_is_rejected`. |
@@ -82,8 +82,12 @@ daemon:
 
 ## 4. Secrets handling
 
-- Agent secrets live as `SecretStr` and are injected only into container env
-  (never the command line or labels).
+- Agent secrets live as `SecretStr` and are written to a private, `0700`
+  per-attempt directory that is bind-mounted read-only at `/run/secrets`.
+  A wrapper exports each file into the process environment before `exec`; the
+  values are never in the container command, environment, or labels, so they
+  are not visible through `docker inspect`. The directory is removed after the
+  attempt. Set `security.secret_dir` to a host tmpfs to keep files in memory.
 - All container output passes through `common.redaction.redact()`; registered
   provider secrets and common token formats are replaced with `[REDACTED]`.
 - API log reads redact again at the boundary.
@@ -97,7 +101,7 @@ daemon:
 | Risk | Why accepted | Recommended next step |
 |---|---|---|
 | Docker daemon access is host-root equivalent. | The orchestrator must create/attach/kill containers. | Dedicated host/VM, rootless Docker (recommended), or a constrained socket proxy; see [deployment.md](deployment.md). A socket proxy alone does not contain a compromised orchestrator because container creation remains available. |
-| Secrets visible in `docker inspect` env. | Daemon access already grants root; removing env visibility does not change the trust boundary. | Inject via tmpfs file and pass only a path if compliance requires it. |
+| Secrets visible in `docker inspect` env. | **Fixed** for the agent path by file-based injection. | Use `security.secret_dir` on a host tmpfs if the secret files must not touch disk; daemon access remains host-root-equivalent (F3). |
 | No per-workspace disk quota. | Bind mounts inherit host disk; quotas are host/filesystem-specific. | XFS project quotas, overlay upperdir quota, or a per-project volume. |
 | LLM provider egress. | Real agents need provider access when enabled. | Egress allowlist and scoped provider keys; keep `allow_network_default=false` otherwise. |
 | `allowlist` network mode unimplemented. | Fails closed instead of widening access. | Implement with a DNS/HTTP proxy or per-container firewall. |

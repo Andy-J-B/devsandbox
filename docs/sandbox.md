@@ -32,13 +32,19 @@ is covered in [deployment.md](deployment.md).
 - Images are checked against `SecurityPolicy.image_allowed` before being
   pulled/run.
 - Resources are clamped via `SecurityPolicy.effective_resources`.
-- Single writable bind mount: `workspace_path -> /workspace` only. No
-  `docker.sock`, no other host mounts.
+- Single writable bind mount: `workspace_path -> /workspace`. No
+  `docker.sock`, no other writable host mounts.
 - `cap_drop=["ALL"]`, `security_opt=["no-new-privileges"]`, non-root user
   (uid 1000), read-only rootfs, tmpfs for `/tmp` and `/home/agent`.
-- Secrets (`secret_env`) are injected as container environment variables at
-  create time (never the command line or labels) and are redacted from logs
-  and exceptions.
+- Secrets (`secret_files`, with `secret_env` accepted as a legacy alias) are
+  written to a private `0700` host directory and bind-mounted **read-only** at
+  `/run/secrets`. A wrapper exports them into the process environment before
+  `exec`, so the values never appear in the container command, environment, or
+  labels (`docker inspect`). The directory is removed when the attempt ends.
+  Set `security.secret_dir` to a host tmpfs (for example
+  `/dev/shm/devsandbox-secrets` on Linux) to keep the files in memory. Docker
+  cannot populate a container tmpfs after start while the rootfs is read-only;
+  the configuration-triggered host tmpfs is the practical equivalent.
 
 ## Deterministic naming (00 §8.5)
 

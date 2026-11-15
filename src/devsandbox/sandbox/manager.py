@@ -12,8 +12,10 @@ in ``tests/unit/test_sandbox.py``):
 * ``cap_drop=["ALL"]``, ``security_opt=["no-new-privileges"]``,
 * non-root user (uid 1000), read-only rootfs with tmpfs for ``/tmp`` and
   ``/home/agent``,
-* secrets only ever enter through container environment variables (never the
-  command line or labels) and are redacted from logs / exceptions,
+* secrets only ever enter through a private, read-only secret-file mount
+  (never the command line, environment, or labels) and are redacted from logs
+  / exceptions; set ``security.secret_dir`` to a host tmpfs to keep the files
+  in memory,
 * the requested network policy can only be *narrowed* by policy, never
   widened; ``allowlist`` is not yet supported and raises ``PolicyViolation``.
 """
@@ -24,6 +26,7 @@ import asyncio
 import contextlib
 import errno
 import os
+import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -68,6 +71,25 @@ _WAIT_EXTRA_SECONDS = 60.0
 _MANAGED_LABEL = "devsandbox.managed"
 _ATTEMPT_LABEL = "devsandbox.attempt"
 
+# Secrets are written to a 0700 host directory and bind-mounted read-only at
+# /run/secrets.  A command wrapper exports each file and then execs the real
+# command, so secret values never appear in the command line, environment, or
+# container labels.  Docker cannot populate a tmpfs after start when the rootfs
+# is read-only; set security.secret_dir to a host tmpfs (for example
+# /dev/shm/devsandbox-secrets on Linux) when in-memory storage is required.
+_SECRETS_DIR = "/run/secrets"
+_SECRET_MAX_BYTES = 64 * 1024
+_SECRET_TOTAL_MAX_BYTES = 256 * 1024
+
+_SECRET_WRAPPER = f"""\
+for f in {_SECRETS_DIR}/*; do
+  [ -f "$f" ] || continue
+  name=$(basename "$f")
+  export "$name=$(cat "$f")" || exit 71
+done
+exec "$@"
+"""
+
 
 def _container_name(attempt_id: AttemptId) -> str:
     """Deterministic container name for an attempt (00 §8.5)."""
@@ -100,6 +122,17 @@ def _parse_created(value: str) -> datetime:
     return datetime.fromisoformat(text)
 
 
+def _wrap_secret_command(command: list[str]) -> list[str]:
+    """Wrap ``command`` so it imports secret files before exec'ing.
+
+    The wrapper contains no secret values; it only reads files that the
+    orchestrator bind-mounts read-only at ``/run/secrets``.
+    """
+    if not command:
+        raise SandboxError("secret injection requires a non-empty command")
+    return ["/bin/sh", "-c", _SECRET_WRAPPER, "devsandbox-secrets", *command]
+
+
 class DockerSandboxManager:
     """Docker implementation of :class:`SandboxManager`."""
 
@@ -115,6 +148,11 @@ class DockerSandboxManager:
         self._settings = settings
         self._policy = SecurityPolicy(settings)
         self._data_root = Path(data_root)
+        self._secret_root = (
+            Path(settings.security.secret_dir)
+            if settings.security.secret_dir
+            else self._data_root / "secrets"
+        )
         self._keep_on_failure = keep_on_failure
         self._log_cap_bytes = log_cap_bytes
         self._client: Any = client or docker.from_env()  # type: ignore[attr-defined]
@@ -123,6 +161,19 @@ class DockerSandboxManager:
 
     async def run(self, req: SandboxRequest) -> SandboxResult:
         """Run ``req`` in a disposable container and return :class:`SandboxResult`."""
+        secret_values = self._secret_values(req)
+        secret_dir = (
+            await asyncio.to_thread(self._write_secret_files, req.attempt_id, secret_values)
+            if secret_values
+            else None
+        )
+        try:
+            return await self._run_inner(req, secret_dir)
+        finally:
+            if secret_dir is not None:
+                await asyncio.to_thread(self._remove_secret_dir, secret_dir)
+
+    async def _run_inner(self, req: SandboxRequest, secret_dir: Path | None) -> SandboxResult:
         # Policy checks that need no docker access happen first (fail fast).
         network = self._policy.effective_network(req.network)
         if network.mode == "allowlist":
@@ -146,7 +197,7 @@ class DockerSandboxManager:
         await asyncio.to_thread(make_writable, req.workspace_path)
 
         container = await asyncio.to_thread(
-            self._create_or_replace_container, req, network, resources
+            self._create_or_replace_container, req, network, resources, secret_dir
         )
         container_id = container.id
         log_dir = self._data_root / "logs" / str(req.attempt_id)
@@ -294,6 +345,68 @@ class DockerSandboxManager:
                 f"failed to prepare {description} directory {path}{hint}: {exc}"
             ) from exc
 
+    @staticmethod
+    def _secret_values(req: SandboxRequest) -> dict[str, str]:
+        """Return the secret payload, rejecting values Docker cannot carry."""
+        values: dict[str, str] = {}
+        total = 0
+        for name, secret in {**req.secret_env, **req.secret_files}.items():
+            value = secret.get_secret_value()
+            if "\x00" in value:
+                raise SandboxError(f"secret {name} contains a NUL byte")
+            encoded_length = len(value.encode("utf-8"))
+            if encoded_length > _SECRET_MAX_BYTES:
+                raise SandboxError(f"secret {name} exceeds {_SECRET_MAX_BYTES} bytes")
+            total += encoded_length
+            values[name] = value
+        if total > _SECRET_TOTAL_MAX_BYTES:
+            raise SandboxError(f"secret payload exceeds {_SECRET_TOTAL_MAX_BYTES} bytes")
+        return values
+
+    def _write_secret_files(self, attempt_id: AttemptId, secrets: dict[str, str]) -> Path:
+        """Write per-attempt secret files to a private host directory.
+
+        The directory is bind-mounted read-only at ``/run/secrets``.  It is
+        removed when the run finishes, whether it succeeds or fails.
+        """
+        secret_dir = self._secret_root / str(attempt_id)
+        with contextlib.suppress(OSError):
+            shutil.rmtree(secret_dir)
+        try:
+            secret_dir.mkdir(parents=True, mode=0o700)
+            os.chmod(secret_dir, 0o700)
+        except OSError as exc:
+            hint = " (disk full or quota exceeded)" if self._is_storage_full(exc) else ""
+            raise SandboxError(
+                f"failed to prepare secret directory {secret_dir}{hint}: {exc}"
+            ) from exc
+
+        uid, gid = container_identity()
+        if os.getuid() == 0:
+            with contextlib.suppress(OSError):
+                os.chown(secret_dir, uid, gid)
+        for name, value in secrets.items():
+            path = secret_dir / name
+            try:
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(value)
+                os.chmod(path, 0o400)
+                if os.getuid() == 0:
+                    with contextlib.suppress(OSError):
+                        os.chown(path, uid, gid)
+            except OSError as exc:
+                self._remove_secret_dir(secret_dir)
+                hint = " (disk full or quota exceeded)" if self._is_storage_full(exc) else ""
+                raise SandboxError(f"failed to write secret file {name}{hint}: {exc}") from exc
+        return secret_dir
+
+    @staticmethod
+    def _remove_secret_dir(secret_dir: Path) -> None:
+        """Best-effort removal of a per-attempt secret directory."""
+        with contextlib.suppress(OSError):
+            shutil.rmtree(secret_dir)
+
     def _ensure_image(self, image: str) -> None:
         """Pull ``image`` if it is not already present locally."""
         try:
@@ -307,7 +420,11 @@ class DockerSandboxManager:
             raise SandboxError(f"failed to inspect image {image}: {exc}") from exc
 
     def _create_or_replace_container(
-        self, req: SandboxRequest, network: NetworkPolicy, resources: ResourceProfile
+        self,
+        req: SandboxRequest,
+        network: NetworkPolicy,
+        resources: ResourceProfile,
+        secret_dir: Path | None,
     ) -> Any:
         """Create (deterministically replacing any prior crashed container)."""
         name = _container_name(req.attempt_id)
@@ -322,7 +439,7 @@ class DockerSandboxManager:
                 f"failed to replace prior container for {req.attempt_id}: {exc}"
             ) from exc
 
-        kwargs = self._build_container_kwargs(req, network, resources)
+        kwargs = self._build_container_kwargs(req, network, resources, secret_dir)
         try:
             return self._client.containers.create(**kwargs)
         except (APIError, RequestException) as exc:
@@ -334,7 +451,11 @@ class DockerSandboxManager:
         return container.attach_socket(params={"stdout": 1, "stderr": 1, "stream": 1})
 
     def _build_container_kwargs(
-        self, req: SandboxRequest, network: NetworkPolicy, resources: ResourceProfile
+        self,
+        req: SandboxRequest,
+        network: NetworkPolicy,
+        resources: ResourceProfile,
+        secret_dir: Path | None = None,
     ) -> dict[str, Any]:
         """Build the docker ``containers.run`` kwargs.
 
@@ -342,8 +463,7 @@ class DockerSandboxManager:
         unit-tested to guarantee the isolation invariants.
         """
         environment: dict[str, str] = dict(req.env)
-        for name, secret in req.secret_env.items():
-            environment[name] = secret.get_secret_value()
+        secret_names = set(req.secret_env) | set(req.secret_files)
 
         uid, gid = container_identity()
         tmpfs: dict[str, str] = {
@@ -353,23 +473,40 @@ class DockerSandboxManager:
             "/home/agent": f"rw,uid={uid},gid={gid},mode=0700",
         }
 
+        command = list(req.command)
+        mounts = [
+            docker.types.Mount(  # type: ignore[attr-defined]
+                target="/workspace",
+                source=str(req.workspace_path),
+                type="bind",
+                read_only=False,
+            )
+        ]
+        if secret_names:
+            if secret_dir is None:
+                raise SandboxError("secret files require a prepared secret directory")
+            # Read-only bind mount: the container can read the files but cannot
+            # modify them, and the values never appear in container config.
+            mounts.append(
+                docker.types.Mount(  # type: ignore[attr-defined]
+                    target=_SECRETS_DIR,
+                    source=str(secret_dir),
+                    type="bind",
+                    read_only=True,
+                )
+            )
+            command = _wrap_secret_command(command)
+
         labels: dict[str, str] = {
             _MANAGED_LABEL: "true",
             _ATTEMPT_LABEL: str(req.attempt_id),
         }
         labels.update(req.labels)
 
-        mount = docker.types.Mount(  # type: ignore[attr-defined]
-            target="/workspace",
-            source=str(req.workspace_path),
-            type="bind",
-            read_only=False,
-        )
-
         kwargs: dict[str, Any] = {
             "image": req.image,
             "name": _container_name(req.attempt_id),
-            "command": list(req.command),
+            "command": command,
             "environment": environment,
             "labels": labels,
             "user": f"{uid}:{gid}",
@@ -377,7 +514,7 @@ class DockerSandboxManager:
             "security_opt": ["no-new-privileges"],
             "read_only": True,
             "tmpfs": tmpfs,
-            "mounts": [mount],
+            "mounts": mounts,
             "mem_limit": f"{resources.memory_mb}m",
             "memswap_limit": f"{resources.memory_mb}m",
             "nano_cpus": int(resources.cpu_cores * 1_000_000_000),

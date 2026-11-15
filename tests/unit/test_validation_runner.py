@@ -69,7 +69,7 @@ async def test_passing_check_maps_to_passed(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert result.duration_seconds == 1.0
     request = sandbox.calls[0]
-    assert request.secret_env == {}
+    assert request.secret_files == {}
     assert request.network.mode == "none"
     assert request.image == "devsandbox/validator:latest"
     assert request.resources == ResourceProfile(

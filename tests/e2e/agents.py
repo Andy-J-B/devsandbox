@@ -64,7 +64,7 @@ class ScriptedAgent:
         image: str,
         scripts: dict[str, Script | Sequence[Script]] | None = None,
         default: Script | None = None,
-        secret_env: dict[str, object] | None = None,
+        secret_files: dict[str, object] | None = None,
         faults: object | None = None,
         delay_seconds: float = 0.0,
     ) -> None:
@@ -73,7 +73,7 @@ class ScriptedAgent:
         self._image = image
         self._scripts = dict(scripts or {})
         self._default = default
-        self._secret_env = secret_env or {}
+        self._secret_files = secret_files or {}
         self._faults = faults
         self._delay_seconds = delay_seconds
         self.requests: list[AgentRunRequest] = []
@@ -113,7 +113,7 @@ class ScriptedAgent:
                 image=self._image,
                 mode=script.mode,
                 extra_args=script.args(),
-                secret_env=self._secret_env,  # type: ignore[arg-type]
+                secret_files=self._secret_files,  # type: ignore[arg-type]
                 faults=self._faults,
             )
             return await adapter.run(req)
@@ -159,7 +159,7 @@ class ScriptedAgent:
                 "DEVSANDBOX_WORKSPACE": "/workspace",
                 **(env or {}),
             },
-            secret_env=self._secret_env,  # type: ignore[arg-type]
+            secret_files=self._secret_files,  # type: ignore[arg-type]
             resources=policy.effective_resources(req.resources),
             network=policy.effective_network(req.network),
             timeout_seconds=req.timeout_seconds,

@@ -24,7 +24,8 @@ change independently, and integrates validated work onto a per-project
 - **Containers are locked down.** Non-root uid 1000, read-only rootfs, no Docker
   socket, no host mounts except the workspace, `network=none` by default.
 - **Secrets never go into prompts, config, commands, logs, or Git.** Only the
-  provider key named by the model config is injected into the container env.
+  provider key named by the model config reaches the container, through a
+  private read-only secret-file mount (not its environment or command line).
 - **Recovery must be idempotent.** Crashes during run/validation/integration must
   not create duplicate commits, orphan containers, or corrupt staging.
 

@@ -80,7 +80,7 @@ async def test_run_success_persists_audit_files_outside_repo_and_builds_request(
     assert call.command[-1].startswith("# DevSandbox coding task")
     assert "OPENCODE_CONFIG_CONTENT" in call.env
     assert call.env["OPENCODE_DISABLE_AUTOUPDATE"] == "1"
-    assert call.secret_env["OPENROUTER_API_KEY"].get_secret_value() == (
+    assert call.secret_files["OPENROUTER_API_KEY"].get_secret_value() == (
         "canary-model-secret-123456"
     )
     assert call.labels["devsandbox.project"] == "proj-1"

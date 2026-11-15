@@ -180,7 +180,7 @@ async def test_required_failure_is_structured_and_retry_ready(tmp_path: Path) ->
     assert "do not weaken or delete tests" in report.summary_for_retry
 
     request = sandbox.calls[0]
-    assert request.secret_env == {}
+    assert request.secret_files == {}
     assert request.network.mode == "none"
 
 

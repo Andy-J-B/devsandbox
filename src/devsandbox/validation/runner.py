@@ -294,7 +294,7 @@ class CheckRunner:
             command=command,
             env=env,
             # Validation containers never receive agent secrets.
-            secret_env={},
+            secret_files={},
             resources=resources,
             network=network,
             timeout_seconds=check.timeout_seconds,

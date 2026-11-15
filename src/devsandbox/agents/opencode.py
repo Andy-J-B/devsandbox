@@ -57,7 +57,7 @@ def render_opencode_config(model: ModelConfig, network: NetworkPolicy) -> dict[s
     """Render the per-attempt OpenCode config.
 
     The config never contains secret values: the API key is referenced as
-    ``{env:NAME}`` and injected through ``SandboxRequest.secret_env``.
+    ``{env:NAME}`` and injected through ``SandboxRequest.secret_files``.
     """
     provider = model.provider_id
     model_id = model.model_id
@@ -152,7 +152,7 @@ class OpenCodeAdapter:
         self._write_prompt(req, workspace_path, prompt)
         config = render_opencode_config(req.model, req.network)
         self._write_config(req, workspace_path, config)
-        secret_env = self._secrets.secret_env_for(req.model)
+        secret_files = self._secrets.secret_files_for(req.model)
 
         env = {
             "OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True, separators=(",", ":")),
@@ -185,7 +185,7 @@ class OpenCodeAdapter:
             workspace_path=workspace_path,
             command=command,
             env=env,
-            secret_env=secret_env,
+            secret_files=secret_files,
             resources=self._policy.effective_resources(req.resources),
             network=self._policy.effective_network(req.network),
             timeout_seconds=req.timeout_seconds,

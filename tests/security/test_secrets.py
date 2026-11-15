@@ -19,10 +19,10 @@ async def test_secret_is_redacted_from_logs_and_metadata(sandbox: Any, tmp_path:
         workspace,
         ["python3", "-c", "import os; print('canary=' + os.environ['CANARY'])"],
         attempt_id="sec-secret",
-        secret_env={"CANARY": CANARY},
+        secret_files={"CANARY": CANARY},
     )
-    # The secret may only be present in the container environment, never in
-    # command/labels (docker inspect of env is an accepted daemon-access risk).
+    # The secret is delivered to a container tmpfs after start; it is never in
+    # the command, labels, or the container environment visible to inspect.
     assert CANARY not in " ".join(request.command)
     assert CANARY not in str(request.labels)
 
@@ -42,7 +42,7 @@ async def test_secret_is_not_written_to_workspace_by_harness(sandbox: Any, tmp_p
         workspace,
         ["python3", "-c", "import os; print(len(os.environ.get('CANARY', '')))"],
         attempt_id="sec-secret-length",
-        secret_env={"CANARY": CANARY},
+        secret_files={"CANARY": CANARY},
     )
     await sandbox.run(request)
     for path in workspace.rglob("*"):
@@ -65,7 +65,7 @@ async def test_registered_secret_is_redacted_even_without_known_pattern(
             workspace,
             ["python3", "-c", "import os; print(os.environ['ARBITRARY'])"],
             attempt_id="sec-registered-secret",
-            secret_env={"ARBITRARY": arbitrary},
+            secret_files={"ARBITRARY": arbitrary},
         )
         result = await sandbox.run(request)
         stdout = read_log(result.stdout_path)
@@ -73,3 +73,45 @@ async def test_registered_secret_is_redacted_even_without_known_pattern(
         assert "[REDACTED]" in stdout
     finally:
         reset_redactor()
+
+
+async def test_secret_is_not_visible_through_docker_inspect(sandbox: Any, tmp_path: Path) -> None:
+    """The secret must not appear in Config.Env/Cmd, only in the container tmpfs."""
+    import asyncio
+
+    from docker.errors import NotFound
+
+    workspace = tmp_path / "workspace"
+    request = make_request(
+        workspace,
+        ["python3", "-c", "import time; time.sleep(5)"],
+        attempt_id="sec-secret-inspect",
+        secret_files={"CANARY": CANARY},
+    )
+
+    run_task = asyncio.create_task(sandbox.run(request))
+    try:
+        container = None
+        for _ in range(100):
+            try:
+                container = sandbox._client.containers.get("ds-sec-secret-inspect")
+                break
+            except NotFound:
+                await asyncio.sleep(0.05)
+        assert container is not None
+        assert CANARY not in str(container.attrs)
+        assert CANARY not in str(container.labels)
+        assert CANARY not in " ".join(container.attrs.get("Config", {}).get("Cmd", []))
+        assert CANARY not in str(container.attrs.get("Config", {}).get("Env", []))
+        # The value is only in the read-only /run/secrets bind mount.
+        secret_mounts = [
+            mount
+            for mount in container.attrs.get("Mounts", [])
+            if mount.get("Destination") == "/run/secrets"
+        ]
+        assert len(secret_mounts) == 1
+        assert secret_mounts[0].get("RW") is False
+    finally:
+        if not run_task.done():
+            await sandbox.kill("ds-sec-secret-inspect")
+        await run_task

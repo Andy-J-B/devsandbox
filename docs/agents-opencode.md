@@ -107,7 +107,8 @@ not listed in models.dev, so without it OpenCode never advertises tools and an
 otherwise tool-capable model answers with tool-call JSON as plain text.
 
 No secret value is ever written to the config: the key is referenced as
-`{env:NAME}` and the value is injected through `SandboxRequest.secret_env`.
+`{env:NAME}` and the value is delivered through `SandboxRequest.secret_files`
+(a private read-only mount, never the container environment or command line).
 
 ### Disabling update/telemetry/share
 
@@ -214,8 +215,10 @@ env_var = "OPENROUTER_API_KEY"
 The adapter maps known providers to their standard env names
 (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...), and uses
 `DEVSANDBOX_MODEL_API_KEY` for custom OpenAI-compatible endpoints. Only the
-secret named by the model config is placed in `secret_env`; the rest of the
-host environment is never forwarded.
+secret named by the model config is placed in `secret_files`; the rest of the
+host environment is never forwarded. The sandbox wrapper exports it inside the
+container just before OpenCode starts, and the file is never in the container
+config visible to `docker inspect`.
 
 ### Option C — paid provider
 

@@ -66,6 +66,10 @@ class SecurityConfig(BaseModel):
     # development where images are built and tagged locally; enable it in
     # deployments that pull from a registry.  See docs/images.md.
     require_pinned_images: bool = False
+    # Optional host directory for per-attempt secret files.  Defaults to
+    # <data_root>/secrets.  Point this at a host tmpfs (for example
+    # /dev/shm/devsandbox-secrets on Linux) to keep secret files off disk.
+    secret_dir: str | None = None
 
 
 class ModelBudget(BaseModel):

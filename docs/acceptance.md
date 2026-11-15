@@ -201,9 +201,11 @@ accepted residual risks. No high-severity finding remains unresolved:
 
 - F1 (host code execution from workspace Git config) and F2 (network default
   on) are fixed with regression tests.
-- F3 (Docker daemon is host-root equivalent), F5 (env secrets visible via
-  `docker inspect`), F6 (no disk quota), and F15 (LLM provider egress) are
-  documented as accepted MVP risks with follow-up recommendations.
+- F3 (Docker daemon is host-root equivalent), F6 (no disk quota), and F15 (LLM
+  provider egress) are documented as accepted MVP risks with follow-up
+  recommendations. F5 (env secrets visible via `docker inspect`) is fixed by
+  file-based secret injection; use `security.secret_dir` on a host tmpfs to keep
+  the files in memory.
 
 The security suite passes with Docker enabled:
 `DEVSANDBOX_E2E=1 python3 -m pytest -q tests/security` → 39 passed. The full

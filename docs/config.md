@@ -13,7 +13,9 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
 - `security`: `allow_network_default`, `allow_push`,
   `allow_autonomous_mode` (supervised → autonomous escalation), `allowed_images`,
   `require_pinned_images` (reject tag-based agent/validator images; see
-  [images.md](images.md))
+  [images.md](images.md)), `secret_dir` (optional host directory for per-attempt
+  secret files; defaults to `<data_root>/secrets`; point it at a host tmpfs such
+  as `/dev/shm/devsandbox-secrets` to keep secrets off disk)
 - `api`: `host` (default `127.0.0.1`), `port`, `token` (prefer the top-level
   `DEVSANDBOX_API_TOKEN` alias), `max_spec_bytes`, `max_log_bytes`,
   `max_log_lines`, `expensive_rate_limit_per_minute`, `request_id_header`,

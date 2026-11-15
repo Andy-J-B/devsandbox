@@ -77,7 +77,7 @@ class E2EEnvironment:
         *,
         scripts: dict[str, Script | list[Script]] | None = None,
         default: Script | None = None,
-        secret_env: dict[str, Any] | None = None,
+        secret_files: dict[str, Any] | None = None,
         faults: Any | None = None,
         delay_seconds: float = 0.0,
     ) -> ScriptedAgent:
@@ -90,7 +90,7 @@ class E2EEnvironment:
             image=DEFAULT_IMAGE,
             scripts=scripts,
             default=default,
-            secret_env=secret_env,
+            secret_files=secret_files,
             faults=faults,
             delay_seconds=delay_seconds,
         )

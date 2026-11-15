@@ -32,9 +32,14 @@ class FakeContainer:
         self.started = False
         self.removed = False
         self.killed = False
+        self.put_archive_calls: list[tuple[str, bytes]] = []
 
     def start(self) -> None:
         self.started = True
+
+    def put_archive(self, path: str, data: bytes) -> bool:
+        self.put_archive_calls.append((path, data))
+        return True
 
     def wait(self, timeout: int | None = None) -> dict[str, Any]:
         return {"StatusCode": 0}
@@ -177,6 +182,7 @@ def _make_request(
     command: list[str] | None = None,
     network: NetworkPolicy | None = None,
     resources: ResourceProfile | None = None,
+    secret_files: dict[str, SecretStr] | None = None,
     secret_env: dict[str, SecretStr] | None = None,
     labels: dict[str, str] | None = None,
 ) -> SandboxRequest:
@@ -186,6 +192,7 @@ def _make_request(
         workspace_path=Path("/tmp/devsandbox-tests/workspaces/proj-1/attempt-1"),
         command=command or ["echo", "hi"],
         env={},
+        secret_files=secret_files or {},
         secret_env=secret_env or {},
         resources=resources or ResourceProfile(),
         network=network or NetworkPolicy(mode="none"),
@@ -433,18 +440,79 @@ def test_run_creates_container_and_returns_result() -> None:
     assert client.containers.run_kwargs  # at least one run call
 
 
-def test_run_secret_env_never_in_command_or_labels() -> None:
+def test_run_secret_files_never_reach_container_config() -> None:
     client = FakeDockerClient()
     manager = _make_manager(client=client)
     secret = SecretStr("super-secret-canary")
+    req = _make_request(secret_files={"API_KEY": secret}, command=["echo", "hi"])
+
+    import asyncio
+
+    asyncio.run(manager.run(req))
+    kwargs = client.containers.run_kwargs[-1]
+    assert "API_KEY" not in kwargs["environment"]
+    assert secret.get_secret_value() not in " ".join(kwargs["command"])
+    assert secret.get_secret_value() not in str(kwargs["labels"])
+    assert secret.get_secret_value() not in str(kwargs)
+    mounts = {mount["Target"]: mount for mount in kwargs["mounts"]}
+    assert "/run/secrets" in mounts
+    assert mounts["/run/secrets"]["ReadOnly"] is True
+    assert "/run/secrets" not in kwargs["tmpfs"]
+    assert kwargs["command"][0:2] == ["/bin/sh", "-c"]
+    # The private directory is removed when the attempt finishes.
+    assert not Path(mounts["/run/secrets"]["Source"]).exists()
+
+
+def test_secret_files_are_private_and_removed() -> None:
+    manager = _make_manager()
+    path = manager._write_secret_files(AttemptId("secret-attempt"), {"API_KEY": "canary"})
+    try:
+        assert path.stat().st_mode & 0o777 == 0o700
+        secret_path = path / "API_KEY"
+        assert secret_path.stat().st_mode & 0o777 == 0o400
+        assert secret_path.read_text() == "canary"
+    finally:
+        manager._remove_secret_dir(path)
+    assert not path.exists()
+
+
+def test_legacy_secret_env_is_also_delivered_through_tmpfs() -> None:
+    client = FakeDockerClient()
+    manager = _make_manager(client=client)
+    secret = SecretStr("legacy-canary")
     req = _make_request(secret_env={"API_KEY": secret})
 
     import asyncio
 
     asyncio.run(manager.run(req))
     kwargs = client.containers.run_kwargs[-1]
-    assert secret.get_secret_value() not in " ".join(kwargs["command"])
-    assert secret.get_secret_value() not in str(kwargs["labels"])
+    assert "API_KEY" not in kwargs["environment"]
+    mounts = {mount["Target"]: mount for mount in kwargs["mounts"]}
+    assert "/run/secrets" in mounts
+    assert mounts["/run/secrets"]["ReadOnly"] is True
+
+
+def test_secret_names_are_validated() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="invalid secret name"):
+        _make_request(secret_files={"../escape": SecretStr("x")})
+    with pytest.raises(ValidationError, match="invalid secret name"):
+        _make_request(secret_files={"A-B": SecretStr("x")})
+    with pytest.raises(ValidationError, match="both secret_files and secret_env"):
+        _make_request(
+            secret_files={"API_KEY": SecretStr("a")},
+            secret_env={"API_KEY": SecretStr("b")},
+        )
+
+
+def test_secret_value_with_nul_is_rejected_before_docker() -> None:
+    manager = _make_manager()
+    req = _make_request(secret_files={"API_KEY": SecretStr("bad\x00value")})
+    with pytest.raises(SandboxError, match="NUL"):
+        import asyncio
+
+        asyncio.run(manager.run(req))
 
 
 def test_docker_info() -> None:

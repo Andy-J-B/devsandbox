@@ -57,7 +57,7 @@ def _make_request(
         workspace_path=tmp_path / "workspace",
         command=command,
         env={},
-        secret_env={},
+        secret_files={},
         resources=resources or ResourceProfile(),
         network=network or NetworkPolicy(mode="none"),
         timeout_seconds=timeout_seconds,

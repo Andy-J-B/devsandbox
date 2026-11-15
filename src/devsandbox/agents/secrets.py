@@ -3,7 +3,10 @@
 ``SecretProvider`` resolves a secret reference (a configured name, a host env
 var name, or a file path) to a :class:`pydantic.SecretStr`, registers the
 value with the redactor so it is never logged, and returns it for injection
-into a container via ``SandboxRequest.secret_env``.
+into a container via ``SandboxRequest.secret_files``.  The sandbox manager
+writes those values to a private, read-only bind mount (or a host tmpfs when
+``security.secret_dir`` points at one), so they do not appear in
+``docker inspect``.
 
 Only the secret named by the model config is ever passed into a container;
 nothing else from the host environment leaks in.
@@ -85,11 +88,15 @@ class SecretProvider:
             global_redactor.register_secret(value)
         return SecretStr(value)
 
-    def secret_env_for(self, model: ModelConfig) -> dict[str, SecretStr]:
-        """Return the container secret env for ``model`` (empty when unset)."""
+    def secret_files_for(self, model: ModelConfig) -> dict[str, SecretStr]:
+        """Return the container secret files for ``model`` (empty when unset)."""
         if not model.secret_ref:
             return {}
         return {provider_secret_env(model.provider_id): self.resolve(model.secret_ref)}
+
+    def secret_env_for(self, model: ModelConfig) -> dict[str, SecretStr]:
+        """Deprecated alias for :meth:`secret_files_for`."""
+        return self.secret_files_for(model)
 
     def redact(self, value: object) -> object:
         """Redact registered secrets from ``value`` before logging/storage."""

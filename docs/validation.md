@@ -71,7 +71,7 @@ checks:
 Each check gets a new container from the configured validator image:
 
 - the agent's container is never reused;
-- `secret_env={}` — validation containers receive **no agent secrets**;
+- `secret_files={}` — validation containers receive **no agent secrets**;
 - network is `none` by default; a check may request `allowlist`/`full`, but the
   policy can only narrow it (and `allowlist` is rejected by the MVP sandbox);
 - resources are clamped by `SecurityPolicy.effective_resources`;

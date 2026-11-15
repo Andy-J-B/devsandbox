@@ -79,7 +79,7 @@ def make_request(
     attempt_id: str = "sec-attempt",
     network: NetworkPolicy | None = None,
     resources: ResourceProfile | None = None,
-    secret_env: dict[str, Any] | None = None,
+    secret_files: dict[str, Any] | None = None,
     timeout_seconds: int = 30,
 ) -> SandboxRequest:
     workspace.mkdir(parents=True, exist_ok=True)
@@ -89,7 +89,7 @@ def make_request(
         workspace_path=workspace.resolve(),
         command=command,
         env={"PATH": "/usr/local/bin:/usr/bin:/bin"},
-        secret_env=secret_env or {},
+        secret_files=secret_files or {},
         resources=resources or ResourceProfile(cpu_cores=0.5, memory_mb=256, pids_limit=64),
         network=network or NetworkPolicy(mode="none"),
         timeout_seconds=timeout_seconds,

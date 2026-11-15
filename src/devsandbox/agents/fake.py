@@ -63,17 +63,21 @@ class FakeScriptAdapter:
         image: str | None = None,
         mode: FakeAgentMode = "success",
         extra_args: Sequence[str] = (),
+        secret_files: dict[str, SecretStr] | None = None,
         secret_env: dict[str, SecretStr] | None = None,
         faults: Any | None = None,
     ) -> None:
         if mode not in _MODE_FLAGS:
             raise ValueError(f"unknown fake agent mode: {mode}")
+        if secret_files is not None and secret_env is not None:
+            raise ValueError("pass secret_files, not both secret_files and secret_env")
         self._sandbox = sandbox
         self._policy = SecurityPolicy(settings)
         self._image = image or settings.agent.image
         self._mode = mode
         self._extra_args = list(extra_args)
-        self._secret_env = dict(secret_env or {})
+        # secret_env is the deprecated name for the same map.
+        self._secret_files = dict(secret_files or secret_env or {})
         self._faults = faults
 
     async def run(self, req: AgentRunRequest) -> AgentRunResult:
@@ -97,7 +101,7 @@ class FakeScriptAdapter:
             workspace_path=Path(req.workspace.path).resolve(),
             command=command,
             env=env,
-            secret_env=self._secret_env,
+            secret_files=self._secret_files,
             resources=self._policy.effective_resources(req.resources),
             network=self._policy.effective_network(req.network),
             timeout_seconds=req.timeout_seconds,
