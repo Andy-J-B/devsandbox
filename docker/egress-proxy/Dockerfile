@@ -19,6 +19,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Apply Debian security updates for packages that were current when the base
+# digest was published (for example zlib).
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # Non-root user.  The sandbox manager overrides the uid/gid at run time, but
 # this keeps `docker run` usable for smoke tests.  Some python:* images already
 # ship a uid-1000 account, so rename it rather than failing on a duplicate id.

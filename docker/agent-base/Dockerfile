@@ -28,6 +28,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     OPENCODE_DISABLE_EXTERNAL_SKILLS=true
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \

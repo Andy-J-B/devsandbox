@@ -38,6 +38,8 @@ running the container. The accepted forms are:
     `docker/egress-proxy/Dockerfile`, and `docker/orchestrator/Dockerfile`;
   - `node:22-bookworm-slim@sha256:e9f565d3...` in
     `docker/agent-base/Dockerfile`;
+  - `node:22-trixie-slim@sha256:68c76cfa...` as the Node source stage in
+    `docker/validator-base/Dockerfile` (matching the image's Debian release);
   - `postgres:16@sha256:f9a7b9eb...` in `docker/compose.yaml`.
 - OpenCode is installed at an exact version (`OPENCODE_VERSION`, default
   `1.19.5`), and the build fails if the installed CLI reports a different
@@ -46,7 +48,8 @@ running the container. The accepted forms are:
   `pytest==9.2.0`, `pytest-asyncio==1.4.1.post1`, `ruff==0.17.4`.
 
 Application images (`devsandbox/agent`, `devsandbox/validator`,
-`devsandbox/egress-proxy`) are still built locally with tags for development.
+`devsandbox/egress-proxy`, `devsandbox/orchestrator`) are still built locally
+with tags for development.
 That is intentional: a locally built image has no registry digest. Use the
 image ID form (`sha256:<id>`) if you want to exercise
 `require_pinned_images=true` without a registry.
@@ -104,6 +107,7 @@ floating tags:
 
    ```bash
    docker buildx imagetools inspect node:22-bookworm-slim
+   docker buildx imagetools inspect node:22-trixie-slim
    docker buildx imagetools inspect python:3.12-slim
    docker buildx imagetools inspect postgres:16
    ```
