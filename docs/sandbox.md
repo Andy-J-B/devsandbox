@@ -45,6 +45,27 @@ is covered in [deployment.md](deployment.md).
   `docker.sock`, no other writable host mounts.
 - `cap_drop=["ALL"]`, `security_opt=["no-new-privileges"]`, non-root user
   (uid 1000), read-only rootfs, tmpfs for `/tmp` and `/home/agent`.
+- **seccomp** is enabled by default with a bundled hardened profile
+  (`src/devsandbox/sandbox/profiles/seccomp-agent.json`). It is derived from
+  Docker's default profile and adds explicit `SCMP_ACT_ERRNO` denials for
+  namespace (`unshare`, `setns`), mount (`mount`, `umount2`, `pivot_root`,
+  `chroot`, the new mount API), tracing (`ptrace`, `process_vm_*`,
+  `perf_event_open`), keyring (`keyctl`, `add_key`, `request_key`), module,
+  reboot, swap, and other kernel-attack syscalls. Set
+  `security.seccomp_profile` to:
+  - `hardened` (default) — the bundled profile;
+  - `docker-default` — omit the option so Docker applies its built-in profile;
+  - `unconfined` — disable seccomp (not recommended);
+  - an **absolute** path to a custom JSON profile. Missing or unreadable
+    profiles raise `PolicyViolation` before Docker is contacted.
+- **AppArmor** defaults to Docker's `docker-default`. Set
+  `security.apparmor_profile=devsandbox-agent` after loading
+  [`docker/apparmor/devsandbox-agent`](../docker/apparmor/devsandbox-agent) on
+  the host to deny mounts, tracing, signals to unconfined processes, and writes
+  to kernel control surfaces.
+- **User namespaces** are optional. Set `security.userns_mode=private` only on
+  a daemon configured with `userns-remap`; otherwise Docker rejects the request
+  and the attempt fails closed. See [deployment.md](deployment.md).
 - Secrets (`secret_files`, with `secret_env` accepted as a legacy alias) are
   written to a private `0700` host directory and bind-mounted **read-only** at
   `/run/secrets`. A wrapper exports them into the process environment before
@@ -98,8 +119,12 @@ attempts.
 
 - Unit tests: `tests/unit/test_sandbox.py` (no Docker) — policy enforcement,
   request→docker kwargs mapping (asserts no `docker.sock`, `cap_drop`,
-  limits, read-only rootfs), log truncation, and redaction of canary secrets.
+  limits, read-only rootfs, hardened seccomp profile), unknown/missing profile
+  rejection, log truncation, and redaction of canary secrets.
 - Integration tests: `tests/integration/test_sandbox.py` (Docker, `@pytest.mark.docker`).
+- Seccomp/AppArmor canary tests: `tests/security/test_container_isolation.py`
+  (real Docker, `DEVSANDBOX_E2E=1`) — live containers carry a seccomp option and
+  cannot call `unshare(CLONE_NEWUSER)`.
 - Allowlist security tests: `tests/security/test_allowlist.py` (real Docker,
   `DEVSANDBOX_E2E=1`) — allowlisted host succeeds through the proxy, unlisted
   host gets `403`, direct egress from the internal network fails, and the proxy

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -212,11 +213,16 @@ class FakeDockerClient:
         return {"NCPU": 2, "MemTotal": 4 * 1024**3}
 
 
-def _make_settings(*, allowed_images: list[str] | None = None) -> DevSandboxSettings:
-    security = {"allow_network_default": True, "allow_push": False}
+def _make_settings(
+    *,
+    allowed_images: list[str] | None = None,
+    security: dict[str, Any] | None = None,
+) -> DevSandboxSettings:
+    values: dict[str, Any] = {"allow_network_default": True, "allow_push": False}
     if allowed_images is not None:
-        security["allowed_images"] = allowed_images
-    return DevSandboxSettings(security=security)  # type: ignore[arg-type]
+        values["allowed_images"] = allowed_images
+    values.update(security or {})
+    return DevSandboxSettings(security=values)
 
 
 def _make_manager(
@@ -328,6 +334,92 @@ def test_build_container_kwargs_full_network_uses_default_bridge() -> None:
     req = _make_request(network=NetworkPolicy(mode="full"))
     kwargs = manager._build_container_kwargs(req, NetworkPolicy(mode="full"), req.resources)
     assert kwargs["network_mode"] == "default"
+
+
+def test_build_container_kwargs_applies_hardened_seccomp_by_default() -> None:
+    manager = _make_manager()
+    req = _make_request()
+    kwargs = manager._build_container_kwargs(req, NetworkPolicy(mode="none"), req.resources)
+
+    options = kwargs["security_opt"]
+    assert "no-new-privileges" in options
+    seccomp = next(option for option in options if option.startswith("seccomp="))
+    # The API carries the profile contents (the daemon may be remote), not a
+    # host path.
+    assert seccomp.startswith("seccomp={")
+    # The profile must stay a deny-list on top of Docker's default allowlist;
+    # an allow-by-default profile would weaken isolation.
+    profile = json.loads(seccomp.removeprefix("seccomp="))
+    assert profile["defaultAction"] == "SCMP_ACT_ERRNO"
+    denied = {
+        name
+        for rule in profile["syscalls"]
+        if rule["action"] == "SCMP_ACT_ERRNO"
+        for name in rule["names"]
+    }
+    assert {"unshare", "mount", "ptrace", "bpf", "setns"} <= denied
+
+
+def test_build_container_kwargs_can_use_docker_default_seccomp() -> None:
+    manager = _make_manager(_make_settings(security={"seccomp_profile": "docker-default"}))
+    req = _make_request()
+    kwargs = manager._build_container_kwargs(req, NetworkPolicy(mode="none"), req.resources)
+
+    assert kwargs["security_opt"] == ["no-new-privileges"]
+
+
+def test_build_container_kwargs_applies_apparmor_and_userns_settings() -> None:
+    manager = _make_manager(
+        _make_settings(
+            security={
+                "apparmor_profile": "devsandbox-agent",
+                "userns_mode": "private",
+            }
+        )
+    )
+    req = _make_request()
+    kwargs = manager._build_container_kwargs(req, NetworkPolicy(mode="none"), req.resources)
+
+    assert "apparmor=devsandbox-agent" in kwargs["security_opt"]
+    assert kwargs["userns_mode"] == "private"
+
+
+def test_missing_custom_seccomp_profile_fails_before_docker(tmp_path: Path) -> None:
+    manager = _make_manager(
+        _make_settings(security={"seccomp_profile": str(tmp_path / "missing.json")})
+    )
+    req = _make_request()
+    with pytest.raises(PolicyViolation, match="seccomp profile not found"):
+        import asyncio
+
+        asyncio.run(manager.run(req))
+
+
+def test_relative_custom_seccomp_profile_is_rejected() -> None:
+    manager = _make_manager(_make_settings(security={"seccomp_profile": "profiles/custom.json"}))
+    req = _make_request()
+    with pytest.raises(PolicyViolation, match="must be absolute"):
+        manager._build_container_kwargs(req, NetworkPolicy(mode="none"), req.resources)
+
+
+def test_custom_seccomp_profile_path_is_applied(tmp_path: Path) -> None:
+    profile = tmp_path / "custom.json"
+    profile.write_text('{"defaultAction": "SCMP_ACT_ALLOW"}', encoding="utf-8")
+    manager = _make_manager(_make_settings(security={"seccomp_profile": str(profile)}))
+    req = _make_request()
+    kwargs = manager._build_container_kwargs(req, NetworkPolicy(mode="none"), req.resources)
+
+    seccomp = next(option for option in kwargs["security_opt"] if option.startswith("seccomp="))
+    assert json.loads(seccomp.removeprefix("seccomp=")) == {"defaultAction": "SCMP_ACT_ALLOW"}
+
+
+def test_invalid_custom_seccomp_profile_is_rejected(tmp_path: Path) -> None:
+    profile = tmp_path / "custom.json"
+    profile.write_text("not json", encoding="utf-8")
+    manager = _make_manager(_make_settings(security={"seccomp_profile": str(profile)}))
+    req = _make_request()
+    with pytest.raises(PolicyViolation, match="invalid seccomp profile"):
+        manager._build_container_kwargs(req, NetworkPolicy(mode="none"), req.resources)
 
 
 def test_run_clamps_resources_before_building_container() -> None:

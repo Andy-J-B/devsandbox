@@ -19,7 +19,13 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   `require_pinned_images` (reject tag-based agent/validator/proxy images; see
   [images.md](images.md)), `secret_dir` (optional host directory for per-attempt
   secret files; defaults to `<data_root>/secrets`; point it at a host tmpfs such
-  as `/dev/shm/devsandbox-secrets` to keep secrets off disk)
+  as `/dev/shm/devsandbox-secrets` to keep secrets off disk),
+  `seccomp_profile` (default `hardened`: bundled Docker-default-plus-denials
+  profile; also `docker-default`, `unconfined`, or an absolute JSON path),
+  `apparmor_profile` (loaded host profile name; unset keeps Docker's
+  `docker-default`), `userns_mode` (`private` only when the daemon uses
+  `userns-remap`; unset keeps the daemon default). See
+  [sandbox.md](sandbox.md#security-enforced-in-_build_container_kwargs-unit-tested).
   - Allowlist entries without a port permit only ports 80/443; use
     `host:port` for anything else. Requests are intersected with this ceiling,
     so a project spec can narrow the list but never add a host.

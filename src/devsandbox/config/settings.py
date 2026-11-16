@@ -80,6 +80,41 @@ class SecurityConfig(BaseModel):
     # <data_root>/secrets.  Point this at a host tmpfs (for example
     # /dev/shm/devsandbox-secrets on Linux) to keep secret files off disk.
     secret_dir: str | None = None
+    # Seccomp profile applied to every agent/validator container.  The default
+    # "hardened" profile is bundled with DevSandbox (Docker's default profile
+    # plus explicit denials for namespace, mount, tracing, keyring, module, and
+    # kernel-attack syscalls).  "docker-default" omits the option so Docker
+    # applies its built-in profile, "unconfined" disables seccomp (not
+    # recommended), and an absolute path loads a custom JSON profile.
+    seccomp_profile: str = "hardened"
+    # Optional AppArmor profile name already loaded on the host.  When unset,
+    # Docker applies its built-in "docker-default" profile.  See
+    # docker/apparmor/devsandbox-agent for a stricter profile.
+    apparmor_profile: str | None = None
+    # Optional user-namespace remapping.  Docker only accepts "private" when
+    # the daemon itself is configured with userns-remap (see
+    # docs/deployment.md); unset leaves the daemon default unchanged.
+    userns_mode: Literal["private"] | None = None
+
+    @field_validator("seccomp_profile")
+    @classmethod
+    def _seccomp_profile_not_empty(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("seccomp_profile must not be empty")
+        return value
+
+    @field_validator("apparmor_profile")
+    @classmethod
+    def _apparmor_profile_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("apparmor_profile must not be empty")
+        if any(character.isspace() or character in ",=" for character in value):
+            raise ValueError("apparmor_profile must be a single profile name")
+        return value
 
     @field_validator("allowlist_hosts")
     @classmethod

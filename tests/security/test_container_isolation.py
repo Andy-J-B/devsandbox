@@ -52,6 +52,7 @@ async def test_container_is_hardened(sandbox: Any, tmp_path: Path) -> None:
     assert host.get("Privileged") in (None, False)
     assert "ALL" in (host.get("CapDrop") or [])
     assert any("no-new-privileges" in option for option in (host.get("SecurityOpt") or []))
+    assert any(option.startswith("seccomp=") for option in (host.get("SecurityOpt") or []))
     assert host.get("ReadonlyRootfs") is True
     assert host.get("PidsLimit")
     uid, gid = container_identity()
@@ -101,6 +102,20 @@ async def test_network_none_blocks_metadata_and_loopback(sandbox: Any, tmp_path:
     )
     exit_code, stdout, stderr = await _run(
         sandbox, tmp_path / "workspace", ["python3", "-c", probe], attempt_id="sec-network"
+    )
+    assert exit_code != 0, stdout + stderr
+
+
+async def test_seccomp_denies_namespace_and_mount_syscalls(sandbox: Any, tmp_path: Path) -> None:
+    """The hardened profile blocks syscalls an agent must never call."""
+    probe = (
+        "import ctypes, sys\n"
+        "libc = ctypes.CDLL(None, use_errno=True)\n"
+        "CLONE_NEWUSER = 0x10000000\n"
+        "sys.exit(0 if libc.unshare(CLONE_NEWUSER) == 0 else 1)\n"
+    )
+    exit_code, stdout, stderr = await _run(
+        sandbox, tmp_path / "workspace", ["python3", "-c", probe], attempt_id="sec-seccomp"
     )
     assert exit_code != 0, stdout + stderr
 

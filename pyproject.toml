@@ -43,6 +43,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "devsandbox.db.migrations" = ["env.py", "versions/*.py"]
+"devsandbox.sandbox" = ["profiles/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

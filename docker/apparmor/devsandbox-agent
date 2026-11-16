@@ -1,0 +1,43 @@
+# AppArmor profile for DevSandbox agent and validator containers.
+#
+# Docker applies its built-in "docker-default" profile unless the sandbox
+# manager is configured with security.apparmor_profile.  This profile is
+# stricter: it denies mounts, tracing, signals to unconfined processes, and
+# writes to kernel control surfaces while still allowing the normal toolchain
+# (Python, Node, git, compilers) to run from a read-only root filesystem.
+#
+# Load it on the Docker host (once per boot or via your configuration
+# management):
+#
+#   sudo apparmor_parser -r -W docker/apparmor/devsandbox-agent
+#
+# Then enable it:
+#
+#   DEVSANDBOX_SECURITY__APPARMOR_PROFILE=devsandbox-agent
+#
+# The profile name (not this file path) must reach the sandbox manager.
+# AppArmor is Linux-only; deployments on other kernels simply leave the
+# setting unset and keep Docker's default.
+
+#include <tunables/global>
+
+profile devsandbox-agent flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  capability,
+  file,
+  network,
+
+  # Never allow the agent to change the mount table or trace other processes.
+  deny mount,
+  deny ptrace,
+  deny signal (send) peer=unconfined,
+  deny signal (receive) peer=unconfined,
+
+  # Kernel and device control surfaces stay read-only.
+  deny /proc/sys/** wklx,
+  deny /sys/** wklx,
+  deny /proc/kcore r,
+  deny /proc/*/mem rw,
+  deny /dev/mem rw,
+}

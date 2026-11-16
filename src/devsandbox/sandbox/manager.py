@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import errno
+import json
 import os
 import shutil
 import threading
@@ -103,6 +104,15 @@ for f in {_SECRETS_DIR}/*; do
 done
 exec "$@"
 """
+
+# Seccomp.  The bundled "hardened" profile is Docker's default profile plus
+# explicit denials (see the profile's ``comment`` field).  "docker-default"
+# lets Docker apply its built-in profile and "unconfined" disables seccomp;
+# any other value is an absolute path to a custom JSON profile.
+_SECCOMP_HARDENED = "hardened"
+_SECCOMP_DOCKER_DEFAULT = "docker-default"
+_SECCOMP_UNCONFINED = "unconfined"
+_HARDENED_SECCOMP_PATH = Path(__file__).with_name("profiles") / "seccomp-agent.json"
 
 
 def _container_name(attempt_id: AttemptId) -> str:
@@ -241,6 +251,10 @@ class DockerSandboxManager:
         if violation is not None:
             raise PolicyViolation(violation)
         resources = self._policy.effective_resources(req.resources)
+        # Resolve the seccomp profile before starting an egress proxy so a
+        # misconfigured profile fails closed without leaving Docker resources
+        # behind.
+        self._seccomp_security_opt()
 
         await asyncio.to_thread(self._ensure_image, req.image)
 
@@ -678,6 +692,58 @@ class DockerSandboxManager:
         """Attach to a *created but not started* container's output stream."""
         return container.attach_socket(params={"stdout": 1, "stderr": 1, "stream": 1})
 
+    def _security_options(self) -> list[str]:
+        """Return the container ``security_opt`` list from settings.
+
+        Seccomp and AppArmor profiles are operator-controlled (never derived
+        from a spec or agent output).  A missing custom profile fails closed
+        with :class:`PolicyViolation` instead of silently running with a weaker
+        default.
+        """
+        options = ["no-new-privileges"]
+        seccomp = self._seccomp_security_opt()
+        if seccomp is not None:
+            options.append(seccomp)
+        apparmor = self._settings.security.apparmor_profile
+        if apparmor is not None:
+            options.append(f"apparmor={apparmor}")
+        return options
+
+    def _seccomp_security_opt(self) -> str | None:
+        """Resolve ``security.seccomp_profile`` to a Docker security option.
+
+        The Docker API expects the profile *contents*, not a host path: the
+        daemon may run on another host and the CLI normally resolves the file
+        client-side.  Reading the file here keeps the same behavior for local
+        and remote daemons and lets a malformed profile fail closed before any
+        container is created.
+        """
+        value = self._settings.security.seccomp_profile
+        if value == _SECCOMP_DOCKER_DEFAULT:
+            return None
+        if value == _SECCOMP_UNCONFINED:
+            return "seccomp=unconfined"
+        if value == _SECCOMP_HARDENED:
+            path = _HARDENED_SECCOMP_PATH
+        else:
+            path = Path(value).expanduser()
+            if not path.is_absolute():
+                raise PolicyViolation(
+                    f"seccomp profile path must be absolute or a built-in name "
+                    f"({_SECCOMP_HARDENED!r}, {_SECCOMP_DOCKER_DEFAULT!r}, "
+                    f"{_SECCOMP_UNCONFINED!r}): {value}"
+                )
+        if not path.is_file():
+            raise PolicyViolation(f"seccomp profile not found: {path}")
+        if not os.access(path, os.R_OK):
+            raise PolicyViolation(f"seccomp profile is not readable: {path}")
+        try:
+            text = path.read_text(encoding="utf-8")
+            json.loads(text)
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            raise PolicyViolation(f"invalid seccomp profile {path}: {exc}") from exc
+        return f"seccomp={text}"
+
     def _build_container_kwargs(
         self,
         req: SandboxRequest,
@@ -740,7 +806,7 @@ class DockerSandboxManager:
             "labels": labels,
             "user": f"{uid}:{gid}",
             "cap_drop": ["ALL"],
-            "security_opt": ["no-new-privileges"],
+            "security_opt": self._security_options(),
             "read_only": True,
             "tmpfs": tmpfs,
             "mounts": mounts,
@@ -750,6 +816,11 @@ class DockerSandboxManager:
             "pids_limit": resources.pids_limit,
             "working_dir": "/workspace",
         }
+        userns_mode = self._settings.security.userns_mode
+        if userns_mode is not None:
+            # Requires the Docker daemon to be configured with userns-remap.
+            # Docker rejects the request otherwise, so this fails closed.
+            kwargs["userns_mode"] = userns_mode
         if network.mode == "none":
             kwargs["network_mode"] = "none"
         elif network.mode == "allowlist":
