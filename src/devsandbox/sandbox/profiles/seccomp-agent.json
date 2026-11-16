@@ -1,5 +1,5 @@
 {
-  "comment": "DevSandbox hardened agent/validator seccomp profile. Derived from the Docker default profile and augmented with explicit denials for namespace, mount, tracing, keyring, module, and kernel-attack syscalls. Deny rules win because ERRNO has higher precedence than ALLOW in libseccomp.",
+  "comment": "DevSandbox hardened agent/validator seccomp profile. Derived from moby/moby v27.3.1 profiles/seccomp/default.json and augmented with explicit denials for namespace, mount, tracing, keyring, module, and kernel-attack syscalls. Deny rules win because ERRNO has higher precedence than ALLOW in libseccomp. Regenerate deliberately when updating the upstream profile; never replace this with an allow-by-default profile.",
   "defaultAction": "SCMP_ACT_ERRNO",
   "defaultErrnoRet": 1,
   "archMap": [
