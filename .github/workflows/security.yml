@@ -216,3 +216,16 @@ jobs:
       - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:python"
+
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-latest
+    # Only run on pull requests since it evaluates diffs and PR dependencies
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4

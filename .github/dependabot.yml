@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # Python package ecosystem (reads setup.py / pyproject.toml / requirements.txt)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  # GitHub Actions workflows ecosystem (keeps actions/checkout, docker actions, etc., up to date)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
