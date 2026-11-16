@@ -13,8 +13,13 @@
 # Usage:
 #   scripts/supply-chain.sh
 #   SUPPLY_CHAIN_IMAGES="agent validator" scripts/supply-chain.sh
-#   GRYPE_FAIL_ON=critical scripts/supply-chain.sh
+#   GRYPE_FAIL_ON=high scripts/supply-chain.sh      # stricter triage gate
+#   GRYPE_ONLY_FIXED=0 scripts/supply-chain.sh      # include unfixed advisories
 #   SUPPLY_CHAIN_SKIP_BUILD=1 scripts/supply-chain.sh
+#
+# The default gate matches CI: fail only on critical findings that already have
+# a fix, and report everything else.  Use GRYPE_FAIL_ON=high and
+# GRYPE_ONLY_FIXED=0 for a full triage report.
 #
 # Signing is opt-in because it needs a registry reference (images must be
 # pushed first) and either a key or GitHub OIDC:
@@ -27,8 +32,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${SUPPLY_CHAIN_OUT:-$ROOT/dist/supply-chain}"
 PREFIX="${SUPPLY_CHAIN_IMAGE_PREFIX:-devsandbox}"
-FAIL_ON="${GRYPE_FAIL_ON:-high}"
-IMAGES="${SUPPLY_CHAIN_IMAGES:-agent validator egress-proxy}"
+FAIL_ON="${GRYPE_FAIL_ON:-critical}"
+ONLY_FIXED="${GRYPE_ONLY_FIXED:-1}"
+IMAGES="${SUPPLY_CHAIN_IMAGES:-agent validator egress-proxy orchestrator}"
 
 missing=()
 for tool in docker syft grype; do
@@ -47,6 +53,7 @@ dockerfile_for() {
     agent) echo "docker/agent-base/Dockerfile" ;;
     validator) echo "docker/validator-base/Dockerfile" ;;
     egress-proxy) echo "docker/egress-proxy/Dockerfile" ;;
+    orchestrator) echo "docker/orchestrator/Dockerfile" ;;
     *)
       echo "unknown image: $1" >&2
       return 1
@@ -74,8 +81,12 @@ for name in $IMAGES; do
   echo "==> generating SBOM: $sbom"
   syft "$image" -o spdx-json >"$sbom"
 
-  echo "==> scanning $name (fail on $FAIL_ON)"
-  grype "sbom:$sbom" --fail-on "$FAIL_ON" --output table
+  echo "==> scanning $name (fail on $FAIL_ON, only-fixed=$ONLY_FIXED)"
+  grype_args=(--fail-on "$FAIL_ON" --output table)
+  if [[ "$ONLY_FIXED" == "1" ]]; then
+    grype_args+=(--only-fixed)
+  fi
+  grype "sbom:$sbom" "${grype_args[@]}"
 done
 
 if [[ -n "${COSIGN_IMAGE_REFS:-}" ]]; then

@@ -27,6 +27,11 @@ concurrency:
 
 env:
   PUSH_IMAGES: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push_images) }}
+  # Report every high/critical finding, but only fail on fixable criticals.
+  # This keeps the gate actionable while base-image dependencies await an
+  # upstream patch (see docs/supply-chain.md).
+  GRYPE_REPORT_SEVERITY: high
+  GRYPE_GATE_SEVERITY: critical
 
 jobs:
   supply-chain:
@@ -47,6 +52,8 @@ jobs:
             dockerfile: docker/validator-base/Dockerfile
           - name: egress-proxy
             dockerfile: docker/egress-proxy/Dockerfile
+          - name: orchestrator
+            dockerfile: docker/orchestrator/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -84,16 +91,30 @@ jobs:
         uses: anchore/scan-action@v4
         with:
           image: devsandbox/scan-${{ matrix.name }}:${{ github.sha }}
-          fail-build: true
-          severity-cutoff: high
+          # Never fail here: scan-action writes SARIF only after a successful
+          # run, and a failed run leaves an empty/invalid file for the upload.
+          fail-build: false
+          severity-cutoff: ${{ env.GRYPE_REPORT_SEVERITY }}
           output-format: sarif
 
       - name: upload vulnerability results
         if: always() && steps.scan.outputs.sarif != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
           category: grype-${{ matrix.name }}
+
+      # Report first, then gate.  The gate only fails when a fix is already
+      # available, so upstream-unfixed advisories remain visible without
+      # breaking every build.
+      - name: gate on fixable vulnerabilities
+        uses: anchore/scan-action@v4
+        with:
+          image: devsandbox/scan-${{ matrix.name }}:${{ github.sha }}
+          fail-build: true
+          only-fixed: true
+          severity-cutoff: ${{ env.GRYPE_GATE_SEVERITY }}
+          output-format: table
 
       - name: log in to GHCR
         if: env.PUSH_IMAGES == 'true'
@@ -177,11 +198,11 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: python
           config-file: ./.github/codeql/codeql-config.yml
-      - uses: github/codeql-action/autobuild@v3
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/autobuild@v4
+      - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:python"

@@ -1,7 +1,7 @@
 # Supply chain: SBOMs, signing, and vulnerability scanning
 
-DevSandbox ships three runtime images (`agent`, `validator`, `egress-proxy`)
-and depends on a Python package graph. The `security` workflow
+DevSandbox ships four runtime images (`agent`, `validator`, `egress-proxy`,
+`orchestrator`) and depends on a Python package graph. The `security` workflow
 ([`.github/workflows/security.yml`](../.github/workflows/security.yml)) checks
 both.
 
@@ -9,7 +9,7 @@ both.
 
 | Job | Trigger | What it does |
 | --- | --- | --- |
-| `supply-chain (agent/validator/egress-proxy)` | push to `main`/tags, PR, weekly schedule, manual | builds each image, generates an SPDX SBOM with Syft, scans it with Grype (fails on `high` or `critical`), uploads SARIF to code scanning |
+| `supply-chain (agent/validator/egress-proxy/orchestrator)` | push to `main`/tags, PR, weekly schedule, manual | builds each image, generates an SPDX SBOM with Syft, reports every high/critical finding to code scanning, and fails only on **critical findings that already have a fix** |
 | `dependency-scan` | same | `pip-audit` over the project dependencies |
 | `secret-scan` | same | Gitleaks over the working tree and Git history |
 | `codeql` | same | CodeQL static analysis for Python |
@@ -30,9 +30,10 @@ Pull requests never push or sign, so fork PRs need no secrets.
 # One-time tool installs (see the script header for links):
 #   syft, grype, cosign, pip-audit, gitleaks
 
-make supply-chain                 # build + SBOM + Grype scan
+make supply-chain                 # build + SBOM + Grype gate (fixable critical)
 SUPPLY_CHAIN_IMAGES="validator" scripts/supply-chain.sh
-GRYPE_FAIL_ON=critical scripts/supply-chain.sh
+GRYPE_FAIL_ON=high scripts/supply-chain.sh         # stricter triage gate
+GRYPE_ONLY_FIXED=0 scripts/supply-chain.sh         # include unfixed advisories
 SUPPLY_CHAIN_SKIP_BUILD=1 scripts/supply-chain.sh
 ```
 
@@ -92,8 +93,25 @@ Then pin the verified digest in `DEVSANDBOX_AGENT__IMAGE`,
 
 - **SBOM format**: SPDX JSON. It is human-readable, widely supported, and can be
   consumed by Grype, Trivy, Dependency-Track, and GitHub's dependency graph.
-- **Fail threshold**: Grype fails the job at `high`. Lower it with
-  `GRYPE_FAIL_ON` locally only for triage; CI should keep the stricter gate.
+- **Report, then gate**: the SARIF upload always runs, so every high/critical
+  finding appears in code scanning. A separate Grype pass then fails the job
+  only for **critical findings with a fix available** (`only-fixed: true`,
+  `severity-cutoff: critical`). This keeps the gate actionable: an advisory
+  with no upstream patch is reported, while a fixable critical blocks the
+  build (and therefore blocks image push and signing on `main`).
+- **Why not fail on every high**: the runtime images inherit OS and npm
+  packages from pinned base images. Failing on all highs would make the
+  pipeline red whenever an upstream advisory lands, even when no fixed package
+  exists. Raise the gate to `high` once the base images and bundled toolchains
+  are routinely patched.
+- **Base image hygiene**: each Dockerfile runs `apt-get upgrade -y` before
+  installing packages, so Debian security updates published after the pinned
+  base digest are applied. The validator copies Node/npm from the official Node
+  image because Debian's `nodejs`/`npm` packages bundled an unpatched
+  `handlebars` with fixable critical CVEs.
+- **Fail threshold**: defaults to fixable `critical`. Lower it with
+  `GRYPE_FAIL_ON` locally only for triage; the CI gate is defined by
+  `GRYPE_GATE_SEVERITY` in the workflow.
 - **Base images**: the Dockerfiles already pin base images by digest. SBOMs
   still matter because they record the OS packages and language dependencies
   pulled in at build time.
