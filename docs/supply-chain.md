@@ -38,6 +38,26 @@ SUPPLY_CHAIN_SKIP_BUILD=1 scripts/supply-chain.sh
 
 SBOMs and scan output are written to `dist/supply-chain/` (ignored by Git).
 
+Dependency, secret, and static-analysis checks:
+
+```bash
+make audit                    # pip-audit + gitleaks (+ CodeQL if installed)
+scripts/security-scans.sh --no-codeql
+CODEQL_REQUIRE=1 scripts/security-scans.sh
+```
+
+`pip-audit` audits the project's declared dependencies (not just the current
+virtualenv), so a clean local environment still catches vulnerable transitive
+packages. `gitleaks` scans the working tree and Git history with
+[`.gitleaks.toml`](../.gitleaks.toml); the only allowlisted findings are the
+deliberate test canaries used by the redaction tests.
+
+CodeQL runs in CI with
+[`.github/codeql/codeql-config.yml`](../.github/codeql/codeql-config.yml).
+Locally, the script uses `python-security-and-quality.qls` when the CodeQL CLI
+is installed and writes SARIF to `dist/codeql-results.sarif`.
+
+
 Signing locally requires a registry reference because cosign signs pushed
 images, not local tags:
 

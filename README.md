@@ -15,10 +15,13 @@ make integration # PostgreSQL-backed integration tests (no Docker required)
 make check       # scripts/check.sh (ruff + ruff format + mypy strict + pytest)
 make check-all   # full gate: check + integration + security + E2E + soak
 make drills      # opt-in Docker/PostgreSQL/disk/idle operational drills
+make audit       # pip-audit + gitleaks (+ CodeQL if installed)
+make supply-chain # build images, generate SBOMs, scan with Grype
 ```
 
 Deployment guidance (rootless Docker and constrained socket proxies) is in
-[docs/deployment.md](docs/deployment.md).
+[docs/deployment.md](docs/deployment.md). Supply-chain controls and image
+signing are in [docs/supply-chain.md](docs/supply-chain.md).
 
 ## How to use
 

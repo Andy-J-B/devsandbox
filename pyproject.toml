@@ -36,6 +36,7 @@ dev = [
     "types-PyYAML>=6.0.0",
     "types-psutil>=5.9.0",
     "types-requests>=2.32.0",
+    "pip-audit>=2.7.0,<3.0.0",
 ]
 
 [tool.setuptools.packages.find]

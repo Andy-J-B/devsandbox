@@ -1,0 +1,14 @@
+name: DevSandbox CodeQL
+
+# Analyze the application source. Build/cache directories and generated
+# artifacts are excluded; tests are included because they exercise untrusted
+# input parsing (spec loaders, Git config, planner output).
+paths-ignore:
+  - docs
+  - dist
+  - .venv
+  - .mypy_cache
+  - .pytest_cache
+  - .ruff_cache
+  - "**/__pycache__"
+  - src/devsandbox/db/migrations

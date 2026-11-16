@@ -73,3 +73,47 @@ def test_supply_chain_signs_and_attests_pushed_images() -> None:
     assert "--type spdxjson" in sign["run"]
     assert "cosign verify" in sign["run"]
     assert "--certificate-oidc-issuer" in sign["run"]
+
+
+def test_dependency_scan_audits_the_local_project_strictly() -> None:
+    job = _job("dependency-scan")
+    runs = "\n".join(step.get("run", "") for step in job["steps"])
+
+    assert "pip install --upgrade pip pip-audit" in runs
+    assert "pip-audit ." in runs
+    assert "--skip-editable" in runs
+    assert "--strict" in runs
+
+
+def test_secret_scan_covers_git_history_with_gitleaks() -> None:
+    job = _job("secret-scan")
+    checkout = next(
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")
+    )
+
+    assert checkout["with"]["fetch-depth"] == 0
+    assert any("gitleaks/gitleaks-action@" in use for use in _uses(job))
+    config = Path(__file__).resolve().parents[2] / ".gitleaks.toml"
+    assert "useDefault = true" in config.read_text(encoding="utf-8")
+
+
+def test_codeql_analyzes_python_with_the_repository_config() -> None:
+    job = _job("codeql")
+    uses = " ".join(_uses(job))
+
+    assert "github/codeql-action/init@" in uses
+    assert "github/codeql-action/autobuild@" in uses
+    assert "github/codeql-action/analyze@" in uses
+    init = next(step for step in job["steps"] if step.get("uses") == "github/codeql-action/init@v3")
+    assert init["with"]["languages"] == "python"
+    assert init["with"]["config-file"] == "./.github/codeql/codeql-config.yml"
+    assert job["permissions"]["security-events"] == "write"
+
+
+def test_security_workflow_runs_on_pull_requests_and_a_schedule() -> None:
+    workflow = _workflow()
+    triggers = workflow.get("on") or workflow.get(True)
+
+    assert "pull_request" in triggers
+    assert "schedule" in triggers
+    assert "workflow_dispatch" in triggers

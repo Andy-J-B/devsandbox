@@ -38,3 +38,6 @@ drills:
 
 supply-chain:
 	./scripts/supply-chain.sh
+
+audit:
+	./scripts/security-scans.sh

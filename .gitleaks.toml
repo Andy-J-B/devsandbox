@@ -1,0 +1,20 @@
+# Gitleaks configuration.
+#
+# Extends the built-in rules and allowlists only deliberate test canaries.  Do
+# not add a broad "tests/" allowlist: a real credential accidentally committed
+# to a test must still fail the scan.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known test-only canaries used to verify redaction and secret handling"
+paths = [
+  '''tests/unit/test_sandbox\.py''',
+  '''tests/unit/test_redaction\.py''',
+  '''tests/integration/test_reporting_golden\.py''',
+]
+regexes = [
+  '''sk-1234567890abcdef''',
+  '''sk-abcdefghijklmnopqrstuvwxyz012345''',
+  '''ghp_abcdefghijklmnopqrstuvwx''',
+]
