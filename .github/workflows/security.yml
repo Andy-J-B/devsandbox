@@ -1,0 +1,138 @@
+name: security
+
+# Supply-chain and dependency checks.  These jobs are intentionally separate
+# from ci.yml so image builds, SBOM generation, and vulnerability scans can run
+# on a schedule and do not slow down the fast unit gate.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    # Weekly, so new advisories are caught even when the code is unchanged.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      push_images:
+        description: "Push images to GHCR and sign them with cosign (keyless)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PUSH_IMAGES: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push_images) }}
+
+jobs:
+  supply-chain:
+    name: supply chain (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: agent
+            dockerfile: docker/agent-base/Dockerfile
+          - name: validator
+            dockerfile: docker/validator-base/Dockerfile
+          - name: egress-proxy
+            dockerfile: docker/egress-proxy/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: compute image reference
+        id: image
+        run: |
+          # GHCR requires a lowercase repository path.
+          repository="${GITHUB_REPOSITORY,,}"
+          echo "ref=ghcr.io/${repository}-${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+          echo "local=devsandbox/scan-${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+
+      - name: build local image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          load: true
+          tags: devsandbox/scan-${{ matrix.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      - name: generate SBOM (syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: devsandbox/scan-${{ matrix.name }}:${{ github.sha }}
+          artifact-name: sbom-${{ matrix.name }}.spdx.json
+          output-file: sbom-${{ matrix.name }}.spdx.json
+          format: spdx-json
+          upload-artifact: true
+
+      - name: vulnerability scan (grype)
+        uses: anchore/scan-action@v4
+        with:
+          image: devsandbox/scan-${{ matrix.name }}:${{ github.sha }}
+          fail-build: true
+          severity-cutoff: high
+          output-format: sarif
+
+      - name: upload vulnerability results
+        if: always() && hashFiles('results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: grype-${{ matrix.name }}
+
+      - name: log in to GHCR
+        if: env.PUSH_IMAGES == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: push image by digest
+        id: push
+        if: env.PUSH_IMAGES == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.image.outputs.ref }}:${{ github.sha }}
+            ${{ steps.image.outputs.ref }}:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+
+      - name: install cosign
+        if: env.PUSH_IMAGES == 'true'
+        uses: sigstore/cosign-installer@v3
+
+      - name: sign image and attest SBOM
+        if: env.PUSH_IMAGES == 'true'
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          SBOM: sbom-${{ matrix.name }}.spdx.json
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign attest --yes \
+            --predicate "${SBOM}" \
+            --type spdxjson \
+            "${IMAGE}@${DIGEST}"
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/${GITHUB_REPOSITORY}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${IMAGE}@${DIGEST}"

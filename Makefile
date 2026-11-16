@@ -35,3 +35,6 @@ check-all:
 
 drills:
 	./scripts/drills.sh
+
+supply-chain:
+	./scripts/supply-chain.sh
