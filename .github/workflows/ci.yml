@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -69,7 +69,7 @@ jobs:
       DEVSANDBOX_DATABASE_URL: postgresql+asyncpg://devsandbox:devsandbox@localhost:5432/devsandbox
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -105,7 +105,7 @@ jobs:
       DEVSANDBOX_SOAK_RUNS: "50"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -133,7 +133,7 @@ jobs:
       DEVSANDBOX_OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
