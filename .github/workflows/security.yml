@@ -32,6 +32,10 @@ env:
   # upstream patch (see docs/supply-chain.md).
   GRYPE_REPORT_SEVERITY: high
   GRYPE_GATE_SEVERITY: critical
+  # Pin Grype explicitly.  scan-action's bundled v0.80.0 still requests the
+  # retired DB schema v5, downloads a database that is months old, and then
+  # refuses to scan ("max allowed age is 5 days").
+  GRYPE_VERSION: v0.121.3
 
 jobs:
   supply-chain:
@@ -89,8 +93,11 @@ jobs:
       - name: vulnerability scan (grype)
         id: scan
         uses: anchore/scan-action@v4
+        env:
+          GRYPE_DB_AUTO_UPDATE: "true"
         with:
           image: devsandbox/scan-${{ matrix.name }}:${{ github.sha }}
+          grype-version: ${{ env.GRYPE_VERSION }}
           # Never fail here: scan-action writes SARIF only after a successful
           # run, and a failed run leaves an empty/invalid file for the upload.
           fail-build: false
@@ -109,8 +116,11 @@ jobs:
       # breaking every build.
       - name: gate on fixable vulnerabilities
         uses: anchore/scan-action@v4
+        env:
+          GRYPE_DB_AUTO_UPDATE: "true"
         with:
           image: devsandbox/scan-${{ matrix.name }}:${{ github.sha }}
+          grype-version: ${{ env.GRYPE_VERSION }}
           fail-build: true
           only-fixed: true
           severity-cutoff: ${{ env.GRYPE_GATE_SEVERITY }}

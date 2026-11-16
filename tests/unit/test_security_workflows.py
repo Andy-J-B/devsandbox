@@ -47,6 +47,7 @@ def test_supply_chain_builds_every_runtime_image() -> None:
 
 
 def test_supply_chain_generates_sboms_and_reports_high_severity() -> None:
+    workflow = _workflow()
     job = _job("supply-chain")
     uses = " ".join(_uses(job))
 
@@ -55,6 +56,11 @@ def test_supply_chain_generates_sboms_and_reports_high_severity() -> None:
     sbom = _step(job, "generate SBOM (syft)")
     assert sbom["with"]["format"] == "spdx-json"
     scan = _step(job, "vulnerability scan (grype)")
+    # scan-action's bundled Grype v0.80.0 uses a retired DB schema and cannot
+    # scan; pin a current version explicitly.
+    assert workflow["env"]["GRYPE_VERSION"] == "v0.121.3"
+    assert scan["with"]["grype-version"] == "${{ env.GRYPE_VERSION }}"
+    assert scan["env"]["GRYPE_DB_AUTO_UPDATE"] == "true"
     # The reporting scan must not fail the build: scan-action only writes a
     # valid SARIF file after a successful run.
     assert scan["with"]["fail-build"] is False
@@ -75,6 +81,8 @@ def test_supply_chain_gates_on_fixable_vulnerabilities_after_reporting() -> None
 
     assert workflow["env"]["GRYPE_REPORT_SEVERITY"] == "high"
     assert workflow["env"]["GRYPE_GATE_SEVERITY"] == "critical"
+    assert gate["with"]["grype-version"] == "${{ env.GRYPE_VERSION }}"
+    assert gate["env"]["GRYPE_DB_AUTO_UPDATE"] == "true"
     assert gate["with"]["fail-build"] is True
     assert gate["with"]["only-fixed"] is True
     assert gate["with"]["severity-cutoff"] == "${{ env.GRYPE_GATE_SEVERITY }}"

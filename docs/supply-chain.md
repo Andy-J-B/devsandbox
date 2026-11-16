@@ -112,6 +112,11 @@ Then pin the verified digest in `DEVSANDBOX_AGENT__IMAGE`,
 - **Fail threshold**: defaults to fixable `critical`. Lower it with
   `GRYPE_FAIL_ON` locally only for triage; the CI gate is defined by
   `GRYPE_GATE_SEVERITY` in the workflow.
+- **Scanner version**: the workflow pins `GRYPE_VERSION` (`v0.121.3`). Do not
+  rely on scan-action's bundled Grype (`v0.80.0`): it still requests the
+  retired schema-v5 database, downloads a months-old snapshot, and then refuses
+  to scan because the database exceeds the five-day age limit. The local script
+  needs a current Grype for the same reason.
 - **Base images**: the Dockerfiles already pin base images by digest. SBOMs
   still matter because they record the OS packages and language dependencies
   pulled in at build time.
