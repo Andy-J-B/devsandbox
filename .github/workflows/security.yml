@@ -92,7 +92,7 @@ jobs:
 
       - name: vulnerability scan (grype)
         id: scan
-        uses: anchore/scan-action@v4
+        uses: anchore/scan-action@v7
         env:
           GRYPE_DB_AUTO_UPDATE: "true"
         with:
@@ -115,7 +115,7 @@ jobs:
       # available, so upstream-unfixed advisories remain visible without
       # breaking every build.
       - name: gate on fixable vulnerabilities
-        uses: anchore/scan-action@v4
+        uses: anchore/scan-action@v7
         env:
           GRYPE_DB_AUTO_UPDATE: "true"
         with:
