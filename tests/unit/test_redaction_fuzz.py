@@ -155,3 +155,14 @@ def test_empty_registered_secret_is_ignored() -> None:
     redactor = Redactor()
     redactor.register_secret("")
     assert redactor.redact_text("nothing to hide") == "nothing to hide"
+
+
+def test_sets_containing_tuples_remain_hashable_and_redacted() -> None:
+    secret = "nested-set-secret-value-abc123"
+    redactor = Redactor()
+    redactor.register_secret(secret)
+
+    cleaned = redactor.redact({("prefix", secret), frozenset({secret})})
+
+    assert isinstance(cleaned, set)
+    assert not _contains(cleaned, secret)

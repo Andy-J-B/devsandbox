@@ -86,11 +86,21 @@ class Redactor:
             return {self.redact_text(str(key)): self.redact(val) for key, val in value.items()}
         if isinstance(value, (list, tuple)):
             return [self.redact(item) for item in value]
-        if isinstance(value, frozenset):
-            return frozenset(self.redact(item) for item in value)
-        if isinstance(value, set):
-            return {self.redact(item) for item in value}
+        if isinstance(value, (set, frozenset)):
+            # Redaction turns tuples into lists, which are unhashable.  Restore
+            # hashability recursively so the container type survives.
+            cleaned = {_hashable(self.redact(item)) for item in value}
+            return frozenset(cleaned) if isinstance(value, frozenset) else cleaned
         return value
+
+
+def _hashable(value: Any) -> Any:
+    """Recursively turn redactor output into a hashable value for sets."""
+    if isinstance(value, list):
+        return tuple(_hashable(item) for item in value)
+    if isinstance(value, dict):
+        return tuple((key, _hashable(item)) for key, item in value.items())
+    return value
 
 
 _redactor = Redactor()
