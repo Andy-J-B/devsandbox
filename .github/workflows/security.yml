@@ -72,7 +72,7 @@ jobs:
           echo "local=devsandbox/scan-${{ matrix.name }}" >> "$GITHUB_OUTPUT"
 
       - name: build local image for scanning
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -137,7 +137,7 @@ jobs:
       - name: push image by digest
         id: push
         if: env.PUSH_IMAGES == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
