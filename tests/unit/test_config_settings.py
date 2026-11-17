@@ -35,3 +35,16 @@ def test_nested_env_uses_double_underscore(monkeypatch: pytest.MonkeyPatch) -> N
     assert settings.api.port == 8123
     assert settings.agent.default_model == "ollama/qwen3:8b"
     assert settings.security.allow_network_default is True
+
+
+def test_git_blob_cap_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVSANDBOX_GIT__MAX_BLOB_BYTES", "2048")
+
+    settings = DevSandboxSettings(_env_file=None)
+
+    assert settings.git.max_blob_bytes == 2048
+
+
+def test_git_blob_cap_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="max_blob_bytes"):
+        DevSandboxSettings(_env_file=None, git={"max_blob_bytes": 0})

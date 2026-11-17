@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from devsandbox.agents.interfaces import AgentRunResult
-from devsandbox.common.errors import GitError, PolicyViolation
+from devsandbox.common.errors import GitChangeLimitError, GitError, PolicyViolation
 from devsandbox.gitmgr.interfaces import IntegrationResult
 from devsandbox.orchestrator.failures import (
     FailureAction,
@@ -201,6 +201,20 @@ def test_infra_backoff_grows_with_consecutive_infra_failures() -> None:
     assert first.retry_not_before == datetime(2026, 1, 1, 12, 0, 10, tzinfo=UTC)
     assert second.retry_not_before == datetime(2026, 1, 1, 12, 0, 20, tzinfo=UTC)
     assert third.retry_not_before == datetime(2026, 1, 1, 12, 0, 40, tzinfo=UTC)
+
+
+def test_change_limit_is_a_retryable_size_failure() -> None:
+    """An oversized blob is the agent's fault, not an infrastructure error."""
+    classifier = _classifier()
+    record = classifier.from_exception(
+        GitChangeLimitError("refusing oversized change-set file: huge.bin")
+    )
+    assert record.kind is FailureKind.VALIDATION_FAILURE
+    assert record.retryable
+    assert record.counts_against_budget
+    assert record.validation_kind == "size_limit"
+    decision = classifier.decide(record, attempt_count=1, max_retries=1)
+    assert decision.action is FailureAction.RETRY
 
 
 def test_policy_violation_fails_immediately() -> None:

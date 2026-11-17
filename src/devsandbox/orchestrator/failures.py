@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..agents.interfaces import AgentRunResult
 from ..agents.sandbox_result import clean_summary
-from ..common.errors import DevSandboxError, PolicyViolation
+from ..common.errors import DevSandboxError, GitChangeLimitError, PolicyViolation
 from ..common.time import utcnow
 from ..gitmgr.interfaces import IntegrationResult
 from ..validation.interfaces import ValidationReport
@@ -184,6 +184,14 @@ class FailureClassifier:
                 retryable=False,
                 counts_against_budget=True,
                 requires_attention=True,
+            )
+        if isinstance(exc, GitChangeLimitError):
+            return self.make_record(
+                FailureKind.VALIDATION_FAILURE,
+                str(exc),
+                retryable=True,
+                counts_against_budget=True,
+                validation_kind="size_limit",
             )
         if isinstance(exc, TimeoutError):
             return self.make_record(

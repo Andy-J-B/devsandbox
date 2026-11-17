@@ -34,7 +34,7 @@ from pathlib import Path
 
 from pathspec import PathSpec
 
-from ..common.errors import GitError
+from ..common.errors import GitChangeLimitError, GitError
 from ..common.ids import AttemptId
 from ..common.types import RepoHandle, RepoSource
 from ..config.policy import SecurityPolicy
@@ -145,6 +145,7 @@ _ALLOWED_CORE_KEYS: frozenset[str] = frozenset(
 )
 
 _MAX_WORKSPACE_GIT_CONFIG_BYTES = 1 << 20
+_BLOB_SCAN_BATCH = 512
 
 
 def _iter_git_config_entries(text: str) -> Iterator[tuple[str, str | None]]:
@@ -198,6 +199,7 @@ class GitManagerImpl:
     ) -> None:
         self._settings = settings
         self._policy = SecurityPolicy(settings)
+        self._max_blob_bytes = settings.git.max_blob_bytes
         self._data_root = Path(data_root)
         self._repos_root = self._data_root / "repos"
         self._workspaces_root = self._data_root / "workspaces"
@@ -316,6 +318,13 @@ class GitManagerImpl:
             head_res = await run_git(["rev-parse", "--verify", "HEAD"], cwd=ws.path)
             head_commit = head_res.stdout.strip()
 
+        # 3. Enforce the collect-time blob cap before the content can reach the
+        #    canonical mirror, integration, validation, or reports.  The diff
+        #    line cap in validation is not enough: a single huge blob bypasses
+        #    it (binary files have no lines).
+        if ws.base_commit:
+            await self._reject_oversized_blobs(ws.path, ws.base_commit, head_commit)
+
         # 4. Build the change set against the base commit.
         base_ancestor = True
         if ws.base_commit:
@@ -357,7 +366,7 @@ class GitManagerImpl:
             files_changed = [line for line in ls_res.stdout.splitlines() if line.strip()]
             diff_stat = f"(history rewrite detected; base {ws.base_commit} not an ancestor of HEAD)"
 
-        # 4. Dangerous-change detection (reject symlink escapes / .gitmodules).
+        # 5. Dangerous-change detection (reject symlink escapes / .gitmodules).
         self._reject_dangerous_content(ws.path, files_changed)
 
         return ChangeSet(
@@ -672,6 +681,52 @@ class GitManagerImpl:
                     if not os.path.islink(target):
                         mode = os.stat(target).st_mode
                         os.chmod(target, mode | 0o666)
+
+    async def _reject_oversized_blobs(
+        self, repo_path: str | Path, base_commit: str, head_commit: str
+    ) -> None:
+        """Reject any blob introduced by the attempt that exceeds the cap.
+
+        Only objects reachable from ``head`` but not from ``base`` are scanned,
+        so a pre-existing large file that the attempt merely renames is not
+        blamed on the agent, while a modified or newly added huge blob is.
+        Enumerating every commit in the range also catches a huge blob that an
+        intermediate commit introduced and a later commit deleted: it would
+        still bloat the canonical mirror and be pushed during integration.
+        """
+        limit = self._max_blob_bytes
+        rev = await run_git(
+            ["rev-list", "--objects", f"{base_commit}..{head_commit}"],
+            cwd=repo_path,
+        )
+        paths: dict[str, str] = {}
+        shas: list[str] = []
+        for raw_line in rev.stdout.splitlines():
+            sha, _, path = raw_line.partition(" ")
+            if not sha or sha in paths:
+                continue
+            paths[sha] = path
+            shas.append(sha)
+
+        for start in range(0, len(shas), _BLOB_SCAN_BATCH):
+            batch = shas[start : start + _BLOB_SCAN_BATCH]
+            result = await run_git(
+                ["cat-file", "--batch-check=%(objecttype) %(objectsize)"],
+                cwd=repo_path,
+                input_text="\n".join(batch) + "\n",
+            )
+            for sha, line in zip(batch, result.stdout.splitlines(), strict=False):
+                object_type, _, size_raw = line.partition(" ")
+                size_text = size_raw.strip()
+                if object_type != "blob" or not size_text.isdigit():
+                    continue
+                size = int(size_text)
+                if size > limit:
+                    path = paths.get(sha) or "<unknown>"
+                    raise GitChangeLimitError(
+                        f"refusing oversized change-set file: {path} is {size} bytes "
+                        f"(limit {limit}; DEVSANDBOX_GIT__MAX_BLOB_BYTES)"
+                    )
 
     def _reject_dangerous_git_config(self, repo_path: str | Path) -> None:
         """Reject local git config that can execute host commands.

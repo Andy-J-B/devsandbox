@@ -10,6 +10,11 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   `cpu_headroom_pct`, `mem_headroom_pct`, `disk_min_free_mb`,
   `pressure_cpu_pct`, `pressure_mem_pct`
 - `retries`: `default_max_retries`, `backoff_base_seconds`, `backoff_max_seconds`
+- `git`: `max_blob_bytes` (default 10 MiB) — collect-time cap on any single
+  blob an attempt introduces. Content above the cap is rejected before it
+  reaches the canonical mirror, integration, validation, or reports, and is
+  classified as a retryable `size_limit` failure. This is settings-only policy;
+  a project spec cannot raise it.
 - `security`: `allow_network_default`, `allow_network_allowlist` (enable
   allowlist egress; off by default), `allowlist_hosts` (operator ceiling; a JSON
   list of `host` or `host:port` entries, optional `*.` subdomain wildcard; an

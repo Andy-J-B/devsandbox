@@ -23,6 +23,15 @@ class GitError(DevSandboxError):
     """Raised when git workspace / integration operations fail."""
 
 
+class GitChangeLimitError(GitError):
+    """Raised when collected changes exceed a hard git collection limit.
+
+    This is attributable to the agent (for example a single blob larger than
+    ``git.max_blob_bytes``), so the orchestrator classifies it as a retryable
+    size-limit failure rather than an infrastructure error.
+    """
+
+
 class ValidationError(DevSandboxError):
     """Raised when validation checks fail or report an error."""
 

@@ -51,6 +51,25 @@ class RetriesConfig(BaseModel):
         return value
 
 
+class GitSettings(BaseModel):
+    """Git collection limits (plan 03).
+
+    These limits are orchestrator policy: a project spec can never raise them.
+    """
+
+    # Largest single blob (uncompressed) an attempt may introduce.  Enforced
+    # while collecting changes, before the content reaches the canonical
+    # mirror, integration, validation, or reports.
+    max_blob_bytes: int = 10 * 1024 * 1024
+
+    @field_validator("max_blob_bytes")
+    @classmethod
+    def _positive_blob_cap(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("git.max_blob_bytes must be > 0")
+        return value
+
+
 class SecurityConfig(BaseModel):
     """Security posture (never sourced from the project spec)."""
 
@@ -318,6 +337,7 @@ class DevSandboxSettings(BaseSettings):
     database_url: str = "postgresql+asyncpg://devsandbox:devsandbox@localhost:5432/devsandbox"
     limits: LimitsConfig = LimitsConfig()
     retries: RetriesConfig = RetriesConfig()
+    git: GitSettings = GitSettings()
     security: SecurityConfig = SecurityConfig()
     agent: AgentConfig = AgentConfig()
     planner: PlannerConfig = PlannerConfig()

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from devsandbox.common.errors import GitError
+from devsandbox.common.errors import GitChangeLimitError, GitError
 from devsandbox.common.types import RepoSource
 from devsandbox.config.settings import DevSandboxSettings
 from devsandbox.gitmgr.command import run_git
@@ -36,8 +36,11 @@ async def _commit_file(repo: Path, rel: str, content: str, message: str) -> str:
     return (await _git("rev-parse", "HEAD", cwd=repo)).strip()
 
 
-async def _workspace(tmp_path: Path, name: str):
-    settings = DevSandboxSettings(data_root=str(tmp_path / "data"))
+async def _workspace(tmp_path: Path, name: str, *, max_blob_bytes: int | None = None):
+    overrides = {}
+    if max_blob_bytes is not None:
+        overrides["git"] = {"max_blob_bytes": max_blob_bytes}
+    settings = DevSandboxSettings(data_root=str(tmp_path / "data"), **overrides)
     manager = GitManagerImpl(settings, tmp_path / "data")
     source_dir = tmp_path / f"upstream-{name}"
     await _commit_file(source_dir, "a.txt", "aaa\n", "add a")
@@ -194,3 +197,67 @@ async def test_normal_workspace_still_collects(tmp_path: Path) -> None:
 
     assert "b.txt" in changes.files_changed
     assert changes.head_commit
+
+
+# ---------------------------------------------------------------------------
+# Oversized blobs are rejected at collect time, not just by the diff-line cap
+# ---------------------------------------------------------------------------
+
+
+async def _commit_bytes(repo: Path, rel: str, content: bytes, message: str) -> None:
+    (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+    (repo / rel).write_bytes(content)
+    await _git("add", "-A", cwd=repo)
+    await _git("commit", "-m", message, cwd=repo)
+
+
+async def test_oversized_blob_is_rejected(tmp_path: Path) -> None:
+    manager, workspace = await _workspace(tmp_path, "big", max_blob_bytes=1024)
+    repo = Path(workspace.path)
+    await _commit_bytes(repo, "huge.bin", b"x" * 2048, "add huge blob")
+
+    with pytest.raises(GitChangeLimitError, match=r"huge\.bin"):
+        await manager.collect_changes(workspace)
+
+
+async def test_oversized_blob_in_intermediate_commit_is_rejected(tmp_path: Path) -> None:
+    """A blob added then deleted still bloats the mirror and must be rejected."""
+    manager, workspace = await _workspace(tmp_path, "big-deleted", max_blob_bytes=1024)
+    repo = Path(workspace.path)
+    await _commit_bytes(repo, "transient.bin", b"x" * 2048, "add huge blob")
+    await _git("rm", "-q", "transient.bin", cwd=repo)
+    await _git("commit", "-m", "delete huge blob", cwd=repo)
+
+    with pytest.raises(GitChangeLimitError, match=r"transient\.bin"):
+        await manager.collect_changes(workspace)
+
+
+async def test_blob_at_the_limit_is_allowed(tmp_path: Path) -> None:
+    manager, workspace = await _workspace(tmp_path, "big-ok", max_blob_bytes=1024)
+    repo = Path(workspace.path)
+    await _commit_bytes(repo, "exact.bin", b"x" * 1024, "add boundary blob")
+
+    changes = await manager.collect_changes(workspace)
+
+    assert "exact.bin" in changes.files_changed
+
+
+async def test_preexisting_large_file_is_not_rejected(tmp_path: Path) -> None:
+    """Only blobs the attempt introduces count against the cap."""
+    settings = DevSandboxSettings(data_root=str(tmp_path / "data"), git={"max_blob_bytes": 64})
+    manager = GitManagerImpl(settings, tmp_path / "data")
+    source_dir = tmp_path / "upstream-legacy"
+    await _commit_file(source_dir, "a.txt", "aaa\n", "add a")
+    await _commit_bytes(source_dir, "legacy.bin", b"x" * 2048, "add legacy blob")
+    repo = await manager.init_project_repo("legacy", RepoSource(path=str(source_dir)))
+    workspace = await manager.create_workspace(repo, "attempt-1", "main")
+    ws_path = Path(workspace.path)
+    (ws_path / "a.txt").write_text("changed\n", encoding="utf-8")
+    await _git("add", "-A", cwd=ws_path)
+    await _git("commit", "-m", "touch a.txt", cwd=ws_path)
+
+    changes = await manager.collect_changes(workspace)
+
+    assert "a.txt" in changes.files_changed
+
+
