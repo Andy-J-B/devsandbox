@@ -557,7 +557,11 @@ async def assert_no_secret_in_persisted_state(
     project_id: str,
     canary: str,
 ) -> None:
-    """Invariant 7: the canary never appears in DB rows or logs."""
+    """Invariant 7: the canary never appears in DB rows, files, or Git history.
+
+    This covers prompts and agent config files written outside the workspace,
+    redacted logs, the per-project bare mirrors, and every audit table.
+    """
     needles = [canary, canary.encode().hex()]
     async with context.session_factory() as session:
         rows = []
@@ -571,11 +575,18 @@ async def assert_no_secret_in_persisted_state(
             result = await session.execute(select(table))
             for row in result.scalars():
                 rows.append(repr(vars(row)))
-    logs = context.data_root / "logs"
-    if logs.exists():
-        for path in logs.rglob("*"):
-            if path.is_file():
-                rows.append(path.read_text(encoding="utf-8", errors="replace"))
+    if context.data_root.exists():
+        for path in context.data_root.rglob("*"):
+            if path.is_file() and not path.is_symlink():
+                try:
+                    rows.append(path.read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    continue
+    repos = context.data_root / "repos"
+    if repos.exists():
+        for bare in repos.glob("*/repo.git"):
+            if (bare / "HEAD").exists():
+                rows.append(run_git(["log", "-p", "--all"], bare))
     combined = "\n".join(rows)
     for needle in needles:
         assert needle not in combined, f"canary {needle!r} leaked into persisted state"

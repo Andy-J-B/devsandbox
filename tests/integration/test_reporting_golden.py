@@ -14,9 +14,15 @@ from tests.planner_helpers import make_spec
 from tests.reporting_helpers import seed_report_scenario
 
 from devsandbox.config.settings import DevSandboxSettings
-from devsandbox.db.models import TaskModel
+from devsandbox.db.models import (
+    AttemptModel,
+    EventModel,
+    IntegrationModel,
+    ProjectModel,
+    TaskModel,
+)
 from devsandbox.reporting.builder import build_report
-from devsandbox.reporting.render import render_markdown
+from devsandbox.reporting.render import render_html, render_json, render_markdown
 
 SCENARIOS = [
     "all_success",
@@ -94,21 +100,46 @@ async def test_report_redacts_secrets_and_is_read_only(db_engine, tmp_path) -> N
     project_id = await seed_report_scenario(maker, "mixed_failures", make_spec(name="canary"))
     canary = "sk-abcdefghijklmnopqrstuvwxyz012345"
     async with maker() as session:
-        result = await session.execute(
-            select(TaskModel).where(TaskModel.id == "task-mixed_failures-test")
-        )
-        task = result.scalar_one()
+        project = await session.get(ProjectModel, project_id)
+        assert project is not None
+        project.name = f"Report {canary}"
+
+        tasks = (await session.execute(select(TaskModel))).scalars().all()
+        task = next(row for row in tasks if row.project_id == project_id)
         task.result_json = {"note": f"leaked key {canary}", "files_changed": []}
+        task.failure_json = {"kind": "validation", "summary": f"failure {canary}"}
+
+        attempts = (await session.execute(select(AttemptModel))).scalars().all()
+        attempt = next(row for row in attempts if row.task_id == task.id)
+        attempt.failure_json = {"kind": "agent_error", "summary": f"attempt {canary}"}
+        attempt.validation_report_json = {
+            "status": "failed",
+            "summary": f"validation {canary}",
+            "checks": [],
+            "files_changed": [],
+        }
+
+        integrations = (await session.execute(select(IntegrationModel))).scalars().all()
+        integration = next(row for row in integrations if row.project_id == project_id)
+        integration.detail = f"integration {canary}"
+
+        events = (await session.execute(select(EventModel))).scalars().all()
+        event = next(row for row in events if row.project_id == project_id)
+        event.payload_json = {"note": f"event {canary}"}
         await session.commit()
 
     first = await build_report(project_id, maker, settings=settings, clock=_clock)
     second = await build_report(project_id, maker, settings=settings, clock=_clock)
     assert first == second
-    serialized = json.dumps(first.model_dump(mode="json"))
-    markdown = render_markdown(first)
-    assert canary not in serialized
-    assert canary not in markdown
-    assert "[REDACTED]" in serialized
+    rendered = [
+        render_json(first),
+        json.dumps(first.model_dump(mode="json")),
+        render_markdown(first),
+        render_html(first),
+    ]
+    for text in rendered:
+        assert canary not in text
+    assert "[REDACTED]" in rendered[0]
 
 
 async def test_conflict_and_policy_warnings_are_reported(db_engine, tmp_path) -> None:

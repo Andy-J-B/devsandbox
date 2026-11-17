@@ -64,6 +64,7 @@ This document records the threat model, the hardening changes made during plan
 | F16 | Low | Log capture could silently lose output from fast containers (observability, not confidentiality). | **Fixed** | The sandbox attaches to the log socket before starting the container. Unit/integration coverage: `tests/unit/test_sandbox.py`, `tests/integration/test_sandbox_manager.py::test_run_echo_captures_logs`. |
 | F17 | Medium | A single huge blob bypassed the diff-line cap (binary content has no lines) and could bloat the canonical mirror, integration worktree, and reports. | **Fixed** | `collect_changes` scans every object introduced by the attempt and rejects blobs above `git.max_blob_bytes` (default 10 MiB) with `GitChangeLimitError`, before integration. The scan also covers blobs added and later deleted in the same range. The orchestrator classifies it as a retryable `size_limit` failure, not an infra error. Tests: `tests/security/test_git_hostile.py` (oversized, intermediate, boundary, pre-existing rename), `tests/unit/test_orchestrator_failures.py::test_change_limit_is_a_retryable_size_failure`. |
 | F18 | Medium | A rename was parsed from `git diff --name-status` as one mangled `old<TAB>new` path, so renaming a file into `.github/workflows/` (or another restricted/protected path) could evade path checks. | **Fixed** | Name-status is now read NUL-delimited (`-z`) and a rename contributes both paths. Non-UTF-8 or tab/newline-containing names can no longer be mis-split. Test: `tests/security/test_git_hostile.py::test_rename_into_restricted_path_is_detected`. |
+| F19 | Low | A registered secret could survive redaction when it appeared in a mapping key or in a `bytes`/`set` container, and a short secret could rewrite the literal `[REDACTED]` marker emitted for a longer one. Common GitLab, Slack, Google, Hugging Face, npm, and JWT credential formats were not recognised. | **Fixed** | The redactor now scrubs mapping keys and supports `bytes`, `set`, and `frozenset`; all replacements use an internal placeholder restored once at the end; common token formats are matched. Seeded fuzz tests exercise nested payloads and overlapping secrets, and static canary checks cover prompts, logs, event payloads, and all report renderers. Tests: `tests/unit/test_redaction_fuzz.py`, `tests/security/test_redaction_canaries.py`, `tests/integration/test_reporting_golden.py::test_report_redacts_secrets_and_is_read_only`, `tests/e2e/test_e2e_canary.py`. |
 
 No unresolved **high-severity** findings remain. F3/F5/F6/F15 are accepted MVP
 residual risks and are called out below.
@@ -94,11 +95,17 @@ daemon:
   attempt. Set `security.secret_dir` to a host tmpfs to keep files in memory.
 - All container output passes through `common.redaction.redact()`; registered
   provider secrets and common token formats are replaced with `[REDACTED]`.
+  Mapping keys and nested `bytes`/`set` values are scrubbed too.
 - API log reads redact again at the boundary.
 - Validation/report/git/DB persist only redacted or agent-independent data.
 - `tests/security/test_secrets.py` covers known-pattern canaries and arbitrary
   registered secrets, and confirms the canary is absent from logs and the
   workspace.
+- `tests/unit/test_redaction_fuzz.py` runs seeded randomized payloads and
+  overlapping secrets; `tests/security/test_redaction_canaries.py` checks
+  prompts, logs, and event rows; `tests/e2e/test_e2e_canary.py` runs a real
+  container whose agent prints a registered secret and then scans the database,
+  data root, reports, and every project Git history (`git log -p --all`).
 
 ## 5. Residual risks (accepted for MVP)
 
