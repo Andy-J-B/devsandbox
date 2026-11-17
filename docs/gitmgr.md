@@ -67,6 +67,18 @@ restrictions, and integrates validated changes into the **staging branch**
 
 - Every git subprocess runs with `core.hooksPath=/dev/null`, so hooks inside
   untrusted workspaces are **never** executed on the host.
+- Workspace-local `.git/config` is checked before any git command runs. The
+  `[core]` section is allowlisted (the only section a normal clone needs), a
+  set of command-like key names is denied in every section, and whole
+  namespaces that can execute commands or redirect transport are denied
+  (`include`/`includeIf`, `filter`, `diff`, `credential`, `url`
+  (`insteadOf`/`pushInsteadOf`), `protocol`, `http`, `remote`, `submodule`,
+  `gpg`, `pager`, `browser`, `alias`, `extensions`, and others). Keys without
+  `=` are treated as booleans, section names are normalized across the
+  deprecated `[section.subsection]` form, and symlinked or oversized config
+  files are refused.
+- A single blob above `git.max_blob_bytes` is rejected at collect time. The
+  diff-line cap alone is not enough because binary content has no lines.
 - A fixed orchestrator identity (`DevSandbox <devsandbox@localhost>`) is used
   for all commits; `GIT_TERMINAL_PROMPT=0`.
 - The canonical bare repo is never exposed writably to agents (workspace is a
@@ -102,6 +114,11 @@ restrictions, and integrates validated changes into the **staging branch**
   executed, symlink escape, `.gitmodules` rejection), restricted paths,
   clean/conflict/sequential integration, CAS mismatch, staging rollback,
   `main` ref protection, push guards, cleanup, and recovery.
+- Security tests: `tests/security/test_git_hostile.py` — hostile git config
+  (including `url.*.insteadOf`, `core.worktree`, `core.gitProxy`,
+  `protocol.*.allow`, `http.*`, pager/credential/alias namespaces, boolean
+  keys), hooks, symlink escapes, rename-into-restricted-path, and
+  oversized-blob rejection at collect time.
 - Fake: `tests/fakes/gitmgr.py` — `FakeGitManager` with scriptable change
   sets, integration outcomes (conflict/rejected), CAS failures, and
   two-phase prepare/commit/abort.

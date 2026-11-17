@@ -56,11 +56,42 @@ def _append_config(workspace, snippet: str) -> None:
     ("snippet", "expected"),
     [
         ("[core]\n\tfsmonitor = /tmp/canary-hook.sh", "core.fsmonitor"),
+        # A boolean (no "=") is still a key: git reads it as true.
+        ("[core]\n\tfsmonitor", "core.fsmonitor"),
         ("[core]\n\tsshCommand = /tmp/canary-hook.sh", "core.sshcommand"),
+        ("[core]\n\tpager = /tmp/canary-hook.sh", "core.pager"),
+        ("[core]\n\tworktree = /tmp/evil-worktree", "core.worktree"),
+        ("[core]\n\tgitProxy = /tmp/canary-hook.sh", "core.gitproxy"),
+        ("[core]\n\talternateRefsCommand = /tmp/canary-hook.sh", "core.alternaterefscommand"),
+        ("[core]\n\tattributesFile = /tmp/evil-attributes", "core.attributesfile"),
+        ("[Core]\n\tPager = /tmp/canary-hook.sh", "core.pager"),
         ('[includeIf "gitdir:**"]\n\tpath = /tmp/evil.gitconfig', "includeif"),
+        # Deprecated [section.subsection] syntax must not hide the section.
+        ("[include.path]\n\tvalue = /tmp/evil.gitconfig", "include"),
         ('[filter "evil"]\n\tsmudge = /tmp/canary-hook.sh', "filter"),
         ("[diff]\n\texternal = /tmp/canary-hook.sh", "diff.external"),
+        ('[diff "evil"]\n\tcommand = /tmp/canary-hook.sh', "diff"),
         ("[credential]\n\thelper = /tmp/canary-hook.sh", "credential.helper"),
+        ('[credential "https://evil.example"]\n\thelper = /tmp/canary-hook.sh', "credential"),
+        ('[url "https://evil.example"]\n\tinsteadOf = https://', "url"),
+        ('[url "https://evil.example"]\n\tpushInsteadOf = https://', "url"),
+        ("[protocol]\n\tallow = always", "protocol"),
+        ('[protocol "ext"]\n\tallow = always', "protocol"),
+        ("[http]\n\tproxy = /tmp/canary-hook.sh", "http"),
+        ('[http "https://evil.example"]\n\tslCert = /tmp/evil.pem', "http"),
+        ('[remote "origin"]\n\tuploadpack = /tmp/canary-hook.sh', "remote"),
+        ('[submodule "x"]\n\tupdate = !/tmp/canary-hook.sh', "submodule"),
+        ("[pager]\n\tdiff = /tmp/canary-hook.sh", "pager"),
+        ("[gpg]\n\tprogram = /tmp/canary-hook.sh", "gpg"),
+        ("[alias]\n\tpwn = !/tmp/canary-hook.sh", "alias"),
+        (
+            "[extensions]\n\tworktreeConfig = true\n[core]\n\tpager = /tmp/canary-hook.sh",
+            "extensions",
+        ),
+        ('[browser "x"]\n\tcmd = /tmp/canary-hook.sh', "browser"),
+        ("[interactive]\n\tdiffFilter = /tmp/canary-hook.sh", "interactive"),
+        # A command-like key in an otherwise benign section is rejected too.
+        ("[user]\n\tprogram = /tmp/canary-hook.sh", "user.program"),
     ],
 )
 async def test_hostile_git_config_is_rejected(tmp_path: Path, snippet: str, expected: str) -> None:
@@ -75,6 +106,44 @@ async def test_hostile_git_config_is_rejected(tmp_path: Path, snippet: str, expe
         await manager.collect_changes(workspace)
 
     assert not canary.exists(), "hostile git config executed host code"
+
+
+async def test_benign_git_config_is_accepted(tmp_path: Path) -> None:
+    """The allowlist must not reject ordinary identity/branch configuration."""
+    manager, workspace = await _workspace(tmp_path, "cfg-ok")
+    _append_config(
+        workspace,
+        "[user]\n\tname = Agent\n\temail = agent@localhost\n"
+        '[branch "main"]\n\tdescription = mainline\n',
+    )
+    (Path(workspace.path) / "b.txt").write_text("bbb\n", encoding="utf-8")
+    await _git("add", "-A", cwd=workspace.path)
+    await _git("commit", "-m", "agent change", cwd=workspace.path)
+
+    changes = await manager.collect_changes(workspace)
+
+    assert "b.txt" in changes.files_changed
+
+
+async def test_symlinked_git_config_is_rejected(tmp_path: Path) -> None:
+    manager, workspace = await _workspace(tmp_path, "cfg-link")
+    config = Path(workspace.path) / ".git" / "config"
+    outside = tmp_path / "outside-config"
+    config.replace(outside)
+    config.symlink_to(outside)
+
+    with pytest.raises(GitError, match="symlink"):
+        await manager.collect_changes(workspace)
+
+
+async def test_huge_git_config_is_rejected(tmp_path: Path) -> None:
+    manager, workspace = await _workspace(tmp_path, "cfg-huge")
+    config = Path(workspace.path) / ".git" / "config"
+    with config.open("a", encoding="utf-8") as handle:
+        handle.write("\n# " + "x" * (1 << 20) + "\n")
+
+    with pytest.raises(GitError, match="larger than"):
+        await manager.collect_changes(workspace)
 
 
 async def test_executable_hook_is_rejected_and_never_runs(tmp_path: Path) -> None:

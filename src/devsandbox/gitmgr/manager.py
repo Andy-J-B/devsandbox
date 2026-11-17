@@ -28,6 +28,7 @@ import contextlib
 import os
 import shutil
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +47,128 @@ _CONTAINER_UID = 1000
 _BRANCH_PREFIX = "devsandbox"
 _ATTEMPT_REF_PREFIX = "refs/devsandbox/attempts"
 _INTEGRATION_REF_PREFIX = "refs/devsandbox/integration-candidate"
+
+# Sections whose keys can execute host commands, redirect transport, or hide
+# configuration in another file.  A workspace clone needs none of them.
+_DANGEROUS_GIT_SECTIONS: frozenset[str] = frozenset(
+    {
+        "alias",
+        "browser",
+        "credential",
+        "diff",
+        "difftool",
+        "extensions",
+        "filter",
+        "gpg",
+        "http",
+        "include",
+        "includeif",
+        "interactive",
+        "man",
+        "mergetool",
+        "pager",
+        "protocol",
+        "receive",
+        "remote",
+        "submodule",
+        "tar",
+        "uploadpack",
+        "url",
+        "web",
+    }
+)
+
+# Key names that are command-like or transport-redirecting in *any* section.
+_DANGEROUS_GIT_KEYS: frozenset[str] = frozenset(
+    {
+        "alternaterefscommand",
+        "attributesfile",
+        "clean",
+        "cmd",
+        "command",
+        "editor",
+        "external",
+        "fsmonitor",
+        "gitproxy",
+        "gpgsign",
+        "helper",
+        "hookspath",
+        "insteadof",
+        "pager",
+        "process",
+        "program",
+        "proxy",
+        "pushinsteadof",
+        "receivepack",
+        "smudge",
+        "sshcommand",
+        "textconv",
+        "update",
+        "uploadpack",
+        "vcs",
+        "worktree",
+    }
+)
+
+# ``[core]`` is the one section a normal clone needs, so it is allowlisted:
+# every other core key (now or in a future git release) is rejected rather than
+# trusted by default.
+_ALLOWED_CORE_KEYS: frozenset[str] = frozenset(
+    {
+        "abbrev",
+        "autocrlf",
+        "bare",
+        "bigfilethreshold",
+        "checkoutencoding",
+        "checkstat",
+        "commentchar",
+        "commitgraph",
+        "compression",
+        "deltabasecachelimit",
+        "eol",
+        "filemode",
+        "ignorecase",
+        "logallrefupdates",
+        "loosecompression",
+        "packedgitsha1",
+        "precomposeunicode",
+        "quotepath",
+        "repositoryformatversion",
+        "safecrlf",
+        "splitindex",
+        "symlinks",
+        "trustctime",
+        "untrackedcache",
+        "usecommitgraph",
+        "whitespace",
+    }
+)
+
+_MAX_WORKSPACE_GIT_CONFIG_BYTES = 1 << 20
+
+
+def _iter_git_config_entries(text: str) -> Iterator[tuple[str, str | None]]:
+    """Yield ``(section, key)`` pairs, or ``(section, None)`` for a header.
+
+    Section names are lowercased and reduced to the part before the first dot
+    so the deprecated ``[section.subsection]`` form cannot smuggle a section
+    past the deny list.  A key without ``=`` is still a key: git reads it as a
+    boolean, and ``core.fsmonitor`` with no value is as dangerous as a path.
+    """
+    section = ""
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(("#", ";")):
+            continue
+        if line.startswith("["):
+            header = line[1:].split("]", 1)[0]
+            name = header.split(None, 1)[0].strip('"') if header.split() else ""
+            section = name.split(".", 1)[0].strip('"').lower()
+            yield section, None
+            continue
+        key = line.split("=", 1)[0].strip().strip('"').lower()
+        if key:
+            yield section, key
 
 
 @dataclass(frozen=True)
@@ -193,7 +316,7 @@ class GitManagerImpl:
             head_res = await run_git(["rev-parse", "--verify", "HEAD"], cwd=ws.path)
             head_commit = head_res.stdout.strip()
 
-        # 3. Build the change set against the base commit.
+        # 4. Build the change set against the base commit.
         base_ancestor = True
         if ws.base_commit:
             anc = await run_git(
@@ -555,43 +678,55 @@ class GitManagerImpl:
 
         An agent owns its workspace, including ``.git/config``.  Git honours
         local keys such as ``core.fsmonitor``, ``core.sshCommand``, hooks,
-        external diff drivers, and filters; those are commands, so trusting a
-        workspace-local config would be host code execution.  ``include`` /
-        ``includeIf`` can hide such keys in another file, so they are rejected
-        too.
+        external diff drivers, filters, and transport redirections such as
+        ``url.*.insteadOf``; those are commands or can redirect a later fetch,
+        so trusting workspace-local config would be host code execution.
+        Config can also hide keys in another file (``include`` /
+        ``includeIf``), enable an extra config file (``extensions``), or use a
+        pager/browser/credential helper, so the whole namespace is denied.
+
+        ``[core]`` is allowlisted because it is the only section a normal
+        clone needs; any other core key (present or future) is rejected.  A
+        generic command-like key denylist applies to every other section so a
+        new git feature cannot introduce a trusted hook by default.
         """
         config_path = Path(repo_path) / ".git" / "config"
+        if config_path.is_symlink():
+            raise GitError("refusing symlinked workspace git config")
         if not config_path.is_file():
             return
-        dangerous_exact = {
-            "core.fsmonitor",
-            "core.sshcommand",
-            "core.hookspath",
-            "core.pager",
-            "core.worktree",
-            "core.editor",
-            "sequence.editor",
-            "diff.external",
-            "credential.helper",
-            "uploadpack.packobjectshook",
-            "protocol.ext.allow",
-        }
+        try:
+            size = config_path.stat().st_size
+        except OSError as exc:  # pragma: no cover - race/infra
+            raise GitError(f"cannot stat workspace git config: {exc}") from exc
+        if size > _MAX_WORKSPACE_GIT_CONFIG_BYTES:
+            raise GitError(
+                f"refusing workspace git config larger than {_MAX_WORKSPACE_GIT_CONFIG_BYTES} bytes"
+            )
+
+        text = config_path.read_text(encoding="utf-8", errors="replace")
         section = ""
-        for raw_line in config_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith(("#", ";")):
+        dangerous_section: str | None = None
+        for section_name, key in _iter_git_config_entries(text):
+            if key is None:
+                # New section header: report a dangerous section that had no
+                # key lines (an empty hostile section is still hostile).
+                if dangerous_section is not None:
+                    raise GitError(f"refusing dangerous workspace git section: {dangerous_section}")
+                section = section_name
+                dangerous_section = section if section in _DANGEROUS_GIT_SECTIONS else None
                 continue
-            if line.startswith("["):
-                section = line.strip("[]").split(None, 1)[0].strip('"').lower()
-                if section.startswith(("include", "includeif", "filter")):
-                    raise GitError(f"refusing dangerous workspace git section: {section}")
-                continue
-            if "=" not in line:
-                continue
-            key = line.split("=", 1)[0].strip().lower()
             full_key = f"{section}.{key}" if section else key
-            if full_key in dangerous_exact:
+            if dangerous_section is not None:
+                raise GitError(
+                    f"refusing dangerous workspace git section: {dangerous_section} ({full_key})"
+                )
+            if section == "core" and key not in _ALLOWED_CORE_KEYS:
                 raise GitError(f"refusing dangerous workspace git config: {full_key}")
+            if key in _DANGEROUS_GIT_KEYS:
+                raise GitError(f"refusing dangerous workspace git config: {full_key}")
+        if dangerous_section is not None:
+            raise GitError(f"refusing dangerous workspace git section: {dangerous_section}")
 
     def _reject_dangerous_hooks(self, repo_path: str | Path) -> None:
         """Reject executable non-sample hooks in an untrusted workspace."""
