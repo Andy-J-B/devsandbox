@@ -35,9 +35,11 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
     `host:port` for anything else. Requests are intersected with this ceiling,
     so a project spec can narrow the list but never add a host.
 - `api`: `host` (default `127.0.0.1`), `port`, `token` (prefer the top-level
-  `DEVSANDBOX_API_TOKEN` alias), `max_spec_bytes`, `max_log_bytes`,
-  `max_log_lines`, `expensive_rate_limit_per_minute`, `request_id_header`,
-  `run_engine`
+  `DEVSANDBOX_API_TOKEN` alias), `additional_tokens` (JSON list of old tokens
+  kept valid during a rotation window; empty and duplicate entries are
+  ignored), `max_spec_bytes`, `max_log_bytes`, `max_log_lines`,
+  `expensive_rate_limit_per_minute`, `request_id_header`, `run_engine`.
+  Rotation and TLS/ingress guidance: [deployment.md](deployment.md#6-api-exposure-tls-and-token-rotation).
 - `agent`: `default_runtime`, `default_provider`, `default_model`, `image`,
   `base_url`, `secret_ref`, `model_budget`
   - `default_runtime` selects the adapter: `opencode` (default) or

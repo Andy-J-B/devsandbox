@@ -37,6 +37,47 @@ def test_nested_env_uses_double_underscore(monkeypatch: pytest.MonkeyPatch) -> N
     assert settings.security.allow_network_default is True
 
 
+def test_api_rotation_tokens_parse_from_nested_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVSANDBOX_API_TOKEN", "primary-token")
+    monkeypatch.setenv(
+        "DEVSANDBOX_API__ADDITIONAL_TOKENS",
+        '["old-token-1", "old-token-2"]',
+    )
+
+    settings = DevSandboxSettings(_env_file=None)
+
+    assert [token.get_secret_value() for token in settings.effective_api_tokens] == [
+        "primary-token",
+        "old-token-1",
+        "old-token-2",
+    ]
+    assert settings.effective_api_token is not None
+    assert settings.effective_api_token.get_secret_value() == "primary-token"
+
+
+def test_effective_api_tokens_ignores_empty_and_duplicate_values() -> None:
+    from pydantic import SecretStr
+
+    settings = DevSandboxSettings(
+        _env_file=None,
+        api={
+            "token": SecretStr("primary"),
+            "additional_tokens": [
+                SecretStr("primary"),
+                SecretStr(""),
+                SecretStr("old"),
+            ],
+        },
+    )
+
+    assert [token.get_secret_value() for token in settings.effective_api_tokens] == [
+        "primary",
+        "old",
+    ]
+    assert settings.effective_api_token is not None
+    assert settings.effective_api_token.get_secret_value() == "primary"
+
+
 def test_git_blob_cap_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEVSANDBOX_GIT__MAX_BLOB_BYTES", "2048")
 

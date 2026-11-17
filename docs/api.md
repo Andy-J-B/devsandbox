@@ -10,19 +10,26 @@ committed schema is [`openapi.json`](openapi.json) and is kept current by
 | Concern | Behaviour |
 | --- | --- |
 | Binding | `DEVSANDBOX_API__HOST` defaults to `127.0.0.1` |
-| Authentication | required static bearer token (`DEVSANDBOX_API_TOKEN` or `DEVSANDBOX_API__TOKEN`), constant-time comparison |
+| Authentication | required static bearer token (`DEVSANDBOX_API_TOKEN` or `DEVSANDBOX_API__TOKEN`), constant-time comparison; `api.additional_tokens` keeps old tokens valid during rotation |
+| Transport | loopback by default; expose remotely only behind TLS termination (see [deployment.md](deployment.md#6-api-exposure-tls-and-token-rotation)) |
 | CORS | no CORS middleware is installed |
 | Policy mutation | no route can change network/resource/push/main-merge policy; those come only from settings files/env |
 | Mode escalation | `POST /v1/projects/{id}/mode` is the only mode change; supervised → autonomous is rejected unless `security.allow_autonomous_mode` is true and the caller is explicit |
 | Spec size | rejected with `413` above `api.max_spec_bytes` (default 1 MB) |
 | Logs | redacted, size-capped, and restricted to paths under `<data_root>/logs` or `<data_root>/workspaces` |
-| Rate limit | an in-memory sliding window (default 60/minute) covers expensive `POST`/`PATCH` operations |
+| Rate limit | an in-memory sliding window per token (default 60/minute) covers expensive `POST`/`PATCH` operations; `429` carries `Retry-After: 60` and auth failures do not consume the bucket |
 
 Every `/v1` request requires:
 
 ```http
 Authorization: Bearer $DEVSANDBOX_API_TOKEN
 ```
+
+During a deliberate rotation, tokens listed in
+`DEVSANDBOX_API__ADDITIONAL_TOKENS` (a JSON list) are also accepted. The
+scheme name is case-insensitive; malformed or non-ASCII credentials return
+`401` rather than an internal error. See [deployment.md](deployment.md) for
+the TLS/ingress recipe and the rotation procedure.
 
 `GET /healthz` and `GET /readyz` are unauthenticated. `/readyz` checks the
 database and Docker daemon and returns `503` when either is unavailable.

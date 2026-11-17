@@ -49,6 +49,8 @@ def make_settings(
     data_root: str,
     *,
     token: str = TOKEN,
+    additional_tokens: list[str] | None = None,
+    rate_limit: int = 0,
     max_spec_bytes: int = 1_000_000,
     allow_autonomous: bool = True,
     database_url: str = "postgresql+asyncpg://unused/unused",
@@ -59,9 +61,10 @@ def make_settings(
         database_url=database_url,
         api={
             "token": SecretStr(token),
+            "additional_tokens": [SecretStr(value) for value in additional_tokens or []],
             "max_spec_bytes": max_spec_bytes,
             "run_engine": False,
-            "expensive_rate_limit_per_minute": 0,
+            "expensive_rate_limit_per_minute": rate_limit,
         },
         security={"allow_autonomous_mode": allow_autonomous},
     )

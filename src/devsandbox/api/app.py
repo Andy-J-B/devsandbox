@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 import time
 import uuid
@@ -12,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, Request, Response
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
+from pydantic import SecretStr
 
 from ..common.errors import ConfigError
 from ..common.logging import get_logger
@@ -76,8 +78,25 @@ def _is_expensive(method: str, path: str) -> bool:
 def _client_key(request: Request) -> str:
     token = _bearer_token(request)
     if token:
-        return f"token:{token[:8]}"
+        # Hash the whole credential so two tokens that share a prefix do not
+        # share a rate-limit bucket, and the raw token is not retained.
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        return f"token:{digest}"
     return f"ip:{request.client.host if request.client else 'unknown'}"
+
+
+def _matches_any_token(provided: str, expected: tuple[SecretStr, ...]) -> bool:
+    """Constant-time comparison against every accepted token.
+
+    ``secrets.compare_digest`` on ``str`` raises for non-ASCII input, so both
+    sides are encoded first.  The loop deliberately does not short-circuit.
+    """
+    provided_bytes = provided.encode("utf-8")
+    matched = False
+    for candidate in expected:
+        value = candidate.get_secret_value()
+        matched |= secrets.compare_digest(provided_bytes, value.encode("utf-8"))
+    return matched
 
 
 def _version(container: AppContainer | None) -> str:
@@ -97,7 +116,7 @@ def create_app(
     the HTTP server.
     """
     settings = container.settings if container is not None else None
-    if container is not None and container.settings.effective_api_token is None:
+    if container is not None and not container.settings.effective_api_tokens:
         raise ConfigError("DEVSANDBOX_API_TOKEN is required before the API can serve requests")
 
     app = FastAPI(
@@ -136,7 +155,10 @@ def create_app(
             "type": "http",
             "scheme": "bearer",
             "bearerFormat": "opaque",
-            "description": "Static token from DEVSANDBOX_API_TOKEN.",
+            "description": (
+                "Static token from DEVSANDBOX_API_TOKEN (or an old token kept in "
+                "api.additional_tokens during a rotation window)."
+            ),
         }
         schema["security"] = [{"BearerAuth": []}]
         for probe in ("/healthz", "/readyz"):
@@ -165,13 +187,9 @@ def create_app(
         started = time.perf_counter()
 
         if current is not None and request.url.path.startswith("/v1"):
-            expected = current.settings.effective_api_token
+            expected = current.settings.effective_api_tokens
             provided = _bearer_token(request)
-            if (
-                expected is None
-                or provided is None
-                or not secrets.compare_digest(provided, expected.get_secret_value())
-            ):
+            if not expected or provided is None or not _matches_any_token(provided, expected):
                 return error_response(
                     request,
                     401,
@@ -181,12 +199,14 @@ def create_app(
             if _is_expensive(request.method, request.url.path):
                 limiter: _RateLimiter = app.state.rate_limiter
                 if not limiter.allow(_client_key(request)):
-                    return error_response(
+                    limited = error_response(
                         request,
                         429,
                         "rate_limited",
                         "too many expensive requests; retry later",
                     )
+                    limited.headers["Retry-After"] = "60"
+                    return limited
 
         response = await call_next(request)
         response.headers[header] = request_id

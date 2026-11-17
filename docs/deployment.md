@@ -222,7 +222,78 @@ orchestrator, daemon, PostgreSQL, and data root on a host that holds no
 production credentials and no unrelated containers. Snapshot or recreate the
 host after experiments. Back up `<data_root>` if you need the audit history.
 
-## 6. Operational checklist
+## 6. API exposure, TLS, and token rotation
+
+The API binds to `127.0.0.1` by default. That is the recommended deployment:
+keep the orchestrator on the Docker host and reach it through an SSH tunnel or
+a local reverse proxy. If the API must be reachable from other machines, treat
+it as an authenticated administrative interface:
+
+- terminate TLS at a reverse proxy or ingress controller; never expose plain
+  HTTP on a non-loopback interface;
+- preserve the `Authorization` header and forward it unchanged;
+- keep the upstream (`devsandbox serve`) on loopback or a private network;
+- do not add permissive CORS or anonymous routes; `/healthz` and `/readyz` are
+  the only unauthenticated endpoints and should not be used to proxy other
+  traffic;
+- terminate slow clients and cap request bodies in the proxy. The app's own
+  cap is `api.max_spec_bytes` (default 1 MiB).
+
+Minimal nginx TLS terminator:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name devsandbox.internal.example;
+
+    ssl_certificate     /etc/ssl/certs/devsandbox.crt;
+    ssl_certificate_key /etc/ssl/private/devsandbox.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    client_max_body_size 2m;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   Authorization     $http_authorization;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+Do not log `Authorization` headers at the proxy. The app never logs the token;
+its request log records method, path, status, and duration only. The in-memory
+rate limiter is per API process, so run a single process or add proxy/ingress
+rate limiting if you scale horizontally.
+
+### Rotating the bearer token
+
+The primary token is `DEVSANDBOX_API_TOKEN` (or `DEVSANDBOX_API__TOKEN`).
+`api.additional_tokens` keeps old tokens valid during a rotation window:
+
+```bash
+# 1. Generate the new token and keep the old one valid.
+export DEVSANDBOX_API_TOKEN="$(openssl rand -hex 32)"
+export DEVSANDBOX_API__ADDITIONAL_TOKENS='["<old-token>"]'
+devsandbox serve
+
+# 2. Update clients, then remove the old token and restart.
+unset DEVSANDBOX_API__ADDITIONAL_TOKENS
+devsandbox serve
+```
+
+Both primary and old tokens are compared in constant time; an unknown token
+gets `401` with `WWW-Authenticate: Bearer`. Remove the old value as soon as the
+last client is updated. Never commit tokens to Git, reuse a token across
+environments, or place one in a project spec.
+
+The expensive-endpoint limiter returns `429` with `Retry-After: 60`. It is
+keyed by a hash of the presented token, so rotation does not merge buckets and
+authentication failures never consume a bucket.
+
+## 7. Operational checklist
 
 - [ ] `main` is never touched by DevSandbox; only
       `devsandbox/<project>/staging` is advanced.
@@ -239,13 +310,18 @@ host after experiments. Back up `<data_root>` if you need the audit history.
       (`limits.disk_min_free_mb`).
 - [ ] PostgreSQL is not exposed beyond loopback or a private network.
 - [ ] The API token is generated with `openssl rand -hex 32` and rotated
-      deliberately.
+      deliberately through `api.additional_tokens`.
+- [ ] Remote API access is behind TLS and a proxy that preserves the bearer
+      token; the upstream remains loopback/private and proxy access logs do not
+      contain `Authorization`.
+- [ ] Expensive-endpoint rate limiting is verified (`429` + `Retry-After`). If
+      the API runs multiple processes, ingress rate limiting is configured too.
 - [ ] Backups cover the database and the per-project bare mirrors under
       `<data_root>/repos`.
 - [ ] You have run `scripts/check-all.sh` and the drills in
       [drills.md](drills.md) on the deployment host.
 
-## 7. Related documents
+## 8. Related documents
 
 - [security-review.md](security-review.md) — threat model, findings, residual
   risks.

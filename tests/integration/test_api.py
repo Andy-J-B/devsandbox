@@ -70,6 +70,129 @@ async def test_auth_required_and_error_envelope(api) -> None:
     assert allowed.headers["X-Request-ID"]
 
 
+@pytest.mark.parametrize(
+    "authorization",
+    [
+        None,
+        "",
+        "Bearer",
+        "Basic abcdef",
+        "Bearer ",
+        "Bearer wrong-token",
+        "bearer wrong-token",
+    ],
+)
+async def test_auth_failures_are_401_without_echoing_the_token(api, authorization) -> None:
+    client, _ = api
+    headers = {} if authorization is None else {"Authorization": authorization}
+    response = await client.get("/v1/projects", headers=headers)
+
+    assert response.status_code == 401
+    assert _error_code(response) == "unauthorized"
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+    assert response.headers["X-Request-ID"]
+    assert "wrong-token" not in response.text
+    assert "Retry-After" not in response.headers
+
+
+async def test_bearer_scheme_is_case_insensitive(api) -> None:
+    client, _ = api
+    response = await client.get("/v1/projects", headers={"Authorization": f"bearer {TOKEN}"})
+    assert response.status_code == 200
+
+
+async def test_token_rotation_accepts_primary_and_old_tokens(db_engine, tmp_path) -> None:
+    settings = make_settings(
+        str(tmp_path / "data"),
+        token="new-token",
+        additional_tokens=["old-token-1", "old-token-2"],
+    )
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    app = make_app(make_container(settings=settings, session_factory=maker))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for token in ("new-token", "old-token-1", "old-token-2"):
+            response = await client.get(
+                "/v1/projects", headers={"Authorization": f"Bearer {token}"}
+            )
+            assert response.status_code == 200, token
+
+        retired = settings.model_copy(
+            update={"api": settings.api.model_copy(update={"additional_tokens": []})}
+        )
+        app = make_app(make_container(settings=retired, session_factory=maker))
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            old = await client.get("/v1/projects", headers={"Authorization": "Bearer old-token-1"})
+            assert old.status_code == 401
+            current = await client.get(
+                "/v1/projects", headers={"Authorization": "Bearer new-token"}
+            )
+            assert current.status_code == 200
+
+
+async def test_rate_limit_blocks_expensive_requests_and_sets_retry_after(
+    db_engine, tmp_path
+) -> None:
+    settings = make_settings(str(tmp_path / "data"), rate_limit=2)
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    app = make_app(make_container(settings=settings, session_factory=maker))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for _ in range(2):
+            allowed = await client.post("/v1/projects/missing/plans", headers=HEADERS)
+            assert allowed.status_code != 429
+
+        limited = await client.post("/v1/projects/missing/plans", headers=HEADERS)
+        assert limited.status_code == 429
+        assert _error_code(limited) == "rate_limited"
+        assert limited.headers["Retry-After"] == "60"
+        assert limited.headers["X-Request-ID"]
+
+        # Cheap reads are not rate-limited by the expensive-endpoint bucket.
+        listed = await client.get("/v1/projects", headers=HEADERS)
+        assert listed.status_code == 200
+
+
+async def test_rate_limit_is_per_token_and_never_consumed_by_auth_failures(
+    db_engine, tmp_path
+) -> None:
+    settings = make_settings(
+        str(tmp_path / "data"),
+        token="primary-token",
+        additional_tokens=["rotation-token"],
+        rate_limit=1,
+    )
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    app = make_app(make_container(settings=settings, session_factory=maker))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for _ in range(5):
+            denied = await client.post(
+                "/v1/projects/missing/plans",
+                headers={"Authorization": "Bearer not-a-real-token"},
+            )
+            assert denied.status_code == 401
+
+        primary = await client.post(
+            "/v1/projects/missing/plans",
+            headers={"Authorization": "Bearer primary-token"},
+        )
+        assert primary.status_code != 429
+
+        old = await client.post(
+            "/v1/projects/missing/plans",
+            headers={"Authorization": "Bearer rotation-token"},
+        )
+        assert old.status_code != 429
+
+        exhausted = await client.post(
+            "/v1/projects/missing/plans",
+            headers={"Authorization": "Bearer primary-token"},
+        )
+        assert exhausted.status_code == 429
+
+
 async def test_health_and_readiness(api) -> None:
     client, container = api
     health = await client.get("/healthz")

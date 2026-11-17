@@ -218,11 +218,18 @@ class ApiSettings(BaseModel):
     ``token`` is required before the API serves requests.  It is intentionally
     a ``SecretStr`` so it can never be logged accidentally.  The CLI can also
     read the top-level ``DEVSANDBOX_API_TOKEN`` alias.
+
+    ``additional_tokens`` accepts old tokens during a deliberate rotation
+    window.  Every configured token authenticates; remove an entry once all
+    clients use the new primary token.
     """
 
     host: str = "127.0.0.1"
     port: int = 8000
     token: SecretStr | None = None
+    # Rotation overlap: old tokens remain valid until the operator removes
+    # them.  Empty entries are ignored, so a blank env var is harmless.
+    additional_tokens: list[SecretStr] = Field(default_factory=list)
     max_spec_bytes: int = 1_000_000
     max_log_bytes: int = 1_000_000
     max_log_lines: int = 5_000
@@ -349,9 +356,31 @@ class DevSandboxSettings(BaseSettings):
     secrets: dict[str, SecretRef] = Field(default_factory=dict)
 
     @property
+    def effective_api_tokens(self) -> tuple[SecretStr, ...]:
+        """Return every accepted API token in preference order.
+
+        The top-level ``DEVSANDBOX_API_TOKEN`` alias wins over the nested
+        ``api.token`` setting.  Rotation tokens follow the primary token;
+        empty and duplicate values are ignored so an operator can leave a
+        blank environment variable without disabling authentication.
+        """
+        primary = self.api_token or self.api.token
+        candidates = ([] if primary is None else [primary]) + list(self.api.additional_tokens)
+        tokens: list[SecretStr] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            value = candidate.get_secret_value()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            tokens.append(candidate)
+        return tuple(tokens)
+
+    @property
     def effective_api_token(self) -> SecretStr | None:
-        """Return the configured API token (top-level alias wins)."""
-        return self.api_token or self.api.token
+        """Return the primary API token (top-level alias wins)."""
+        tokens = self.effective_api_tokens
+        return tokens[0] if tokens else None
 
 
 _cached_settings: DevSandboxSettings | None = None

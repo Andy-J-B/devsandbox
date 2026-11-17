@@ -2800,7 +2800,7 @@
     "securitySchemes": {
       "BearerAuth": {
         "bearerFormat": "opaque",
-        "description": "Static token from DEVSANDBOX_API_TOKEN.",
+        "description": "Static token from DEVSANDBOX_API_TOKEN (or an old token kept in api.additional_tokens during a rotation window).",
         "scheme": "bearer",
         "type": "http"
       }
