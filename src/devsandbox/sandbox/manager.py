@@ -284,7 +284,12 @@ class DockerSandboxManager:
         egress: _EgressRuntime | None,
     ) -> SandboxResult:
         container = await asyncio.to_thread(
-            self._create_or_replace_container, req, network, resources, secret_dir, egress
+            self._create_or_replace_container,
+            req,
+            network,
+            resources,
+            secret_dir,
+            egress,
         )
         container_id = container.id
         log_dir = self._data_root / "logs" / str(req.attempt_id)
@@ -385,7 +390,8 @@ class DockerSandboxManager:
 
         try:
             container.reload()
-            oom_killed = bool(container.attrs.get("State", {}).get("OOMKilled"))
+            state = container.attrs.get("State", {}) or {}
+            oom_killed = bool(state.get("OOMKilled", False))
         except Exception:  # best-effort
             oom_killed = False
         if peak_usage[0]:
@@ -419,7 +425,10 @@ class DockerSandboxManager:
     @staticmethod
     def _is_storage_full(error: BaseException) -> bool:
         """Return whether ``error`` indicates a full or over-quota filesystem."""
-        return isinstance(error, OSError) and error.errno in {errno.ENOSPC, errno.EDQUOT}
+        return isinstance(error, OSError) and error.errno in {
+            errno.ENOSPC,
+            errno.EDQUOT,
+        }
 
     @classmethod
     def _prepare_directory(cls, path: Path, description: str) -> None:
