@@ -148,6 +148,35 @@ _MAX_WORKSPACE_GIT_CONFIG_BYTES = 1 << 20
 _BLOB_SCAN_BATCH = 512
 
 
+def _parse_name_status_paths(output: str) -> list[str]:
+    """Flatten ``git diff --name-status -z`` output into changed paths.
+
+    Entries are ``status\\0path\\0``; renames and copies are
+    ``R<score>\\0old\\0new\\0``.  Both sides of a rename are returned so
+    restricted-path, symlink, and protected-path checks see the new location
+    as well as the old one.
+    """
+    fields = output.split("\0")
+    paths: list[str] = []
+    index = 0
+    while index < len(fields):
+        status = fields[index]
+        if not status:
+            index += 1
+            continue
+        if status[0] in {"R", "C"}:
+            if index + 2 >= len(fields):
+                break
+            paths.extend([fields[index + 1], fields[index + 2]])
+            index += 3
+            continue
+        if index + 1 >= len(fields):
+            break
+        paths.append(fields[index + 1])
+        index += 2
+    return [path for path in paths if path]
+
+
 def _iter_git_config_entries(text: str) -> Iterator[tuple[str, str | None]]:
     """Yield ``(section, key)`` pairs, or ``(section, None)`` for a header.
 
@@ -348,13 +377,15 @@ class GitManagerImpl:
                 if line:
                     sha, _, message = line.partition(" ")
                     commits.append({"sha": sha, "message": message})
+            # NUL-delimited output: path names are never quoted or ambiguous,
+            # and a rename reports both the old and the new path so
+            # restricted-path checks cannot miss a file renamed into a
+            # protected directory.
             diff_res = await run_git(
-                ["diff", "--name-status", ws.base_commit, head_commit],
+                ["diff", "--name-status", "-z", ws.base_commit, head_commit],
                 cwd=ws.path,
             )
-            files_changed = [
-                line.split("\t", 1)[-1] for line in diff_res.stdout.splitlines() if line.strip()
-            ]
+            files_changed = _parse_name_status_paths(diff_res.stdout)
             stat_res = await run_git(
                 ["diff", "--stat", ws.base_commit, head_commit],
                 cwd=ws.path,

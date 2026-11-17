@@ -199,6 +199,28 @@ async def test_normal_workspace_still_collects(tmp_path: Path) -> None:
     assert changes.head_commit
 
 
+async def test_rename_into_restricted_path_is_detected(tmp_path: Path) -> None:
+    """A rename must expose the new path, not a mangled ``old<TAB>new`` string."""
+    manager = GitManagerImpl(
+        DevSandboxSettings(data_root=str(tmp_path / "data")), tmp_path / "data"
+    )
+    source_dir = tmp_path / "upstream-rename"
+    await _commit_file(source_dir, "notes.txt", "notes\n", "add notes")
+    repo = await manager.init_project_repo("rename", RepoSource(path=str(source_dir)))
+    workspace = await manager.create_workspace(repo, "attempt-1", "main")
+    repo_path = Path(workspace.path)
+    (repo_path / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
+    await _git("mv", "notes.txt", ".github/workflows/evil.yml", cwd=repo_path)
+    await _git("commit", "-m", "rename into workflows", cwd=repo_path)
+
+    changes = await manager.collect_changes(workspace)
+    violations = await manager.check_restricted_paths(changes, [])
+
+    assert "notes.txt" in changes.files_changed
+    assert ".github/workflows/evil.yml" in changes.files_changed
+    assert any(".github/workflows/evil.yml" in violation for violation in violations)
+
+
 # ---------------------------------------------------------------------------
 # Oversized blobs are rejected at collect time, not just by the diff-line cap
 # ---------------------------------------------------------------------------
@@ -261,3 +283,21 @@ async def test_preexisting_large_file_is_not_rejected(tmp_path: Path) -> None:
     assert "a.txt" in changes.files_changed
 
 
+async def test_preexisting_large_file_rename_is_not_blamed_on_the_agent(
+    tmp_path: Path,
+) -> None:
+    """The cap applies to blobs the attempt introduces, not to existing content."""
+    settings = DevSandboxSettings(data_root=str(tmp_path / "data"), git={"max_blob_bytes": 64})
+    manager = GitManagerImpl(settings, tmp_path / "data")
+    source_dir = tmp_path / "upstream-large"
+    await _commit_file(source_dir, "a.txt", "aaa\n", "add a")
+    await _commit_bytes(source_dir, "legacy.bin", b"x" * 2048, "add legacy blob")
+    repo = await manager.init_project_repo("large", RepoSource(path=str(source_dir)))
+    workspace = await manager.create_workspace(repo, "attempt-1", "main")
+    ws_path = Path(workspace.path)
+    await _git("mv", "legacy.bin", "renamed.bin", cwd=ws_path)
+    await _git("commit", "-m", "rename legacy blob", cwd=ws_path)
+
+    changes = await manager.collect_changes(workspace)
+
+    assert "renamed.bin" in changes.files_changed

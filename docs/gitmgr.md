@@ -37,8 +37,11 @@ restrictions, and integrates validated changes into the **staging branch**
   executable non-sample hooks and dangerous content (symlink escapes,
   `.gitmodules`, `.git/*` config), commits leftover uncommitted changes as
   the orchestrator, and builds the change set (commits, changed files, diff
-  stat) against the base commit. Any blob introduced by the attempt that
-  exceeds `git.max_blob_bytes` (default 10 MiB) is rejected with
+  stat) against the base commit. Changed files are read with
+  `git diff --name-status -z`, so a rename contributes both its old and new
+  path and path-based checks cannot be bypassed by renaming a file into a
+  restricted directory. Any blob introduced by the attempt that exceeds
+  `git.max_blob_bytes` (default 10 MiB) is rejected with
   `GitChangeLimitError` before integration; the scan covers every commit in
   the range, so a huge blob added and then deleted is still refused.
 - `check_restricted_paths(cs, restricted) -> list[str]` — gitwildmatch
