@@ -14,7 +14,8 @@ the proxy publishes ports 80 and 443. Port 80 permanently redirects to HTTPS.
 - `compose.override.yaml` — adds the proxy to `docker/compose.yaml`, keeps the
   root filesystem read-only, drops all capabilities, and mounts the config and
   TLS material read-only.
-- `tls/` — local certificate material. It is intentionally ignored by Git.
+- `tls/` — local certificate material. It is intentionally ignored by Git and
+  by the root Docker build context.
 
 ## Usage
 

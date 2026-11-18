@@ -252,7 +252,8 @@ The repository ships a hardened nginx example under
   `orchestrator` service. Only the proxy publishes public ports (80 and 443);
   port 80 permanently redirects to HTTPS.
 - `README.md` covers certificate creation, key permissions, and verification.
-- `tls/` holds local certificate material and is ignored by Git.
+- `tls/` holds local certificate material and is ignored by Git and Docker
+  build contexts.
 
 Start the stack from the repository root:
 

@@ -158,10 +158,12 @@ def test_proxy_image_is_not_floating() -> None:
     assert "pin it by digest" in images_doc.lower()
 
 
-def test_local_tls_material_is_gitignored() -> None:
-    text = (_ROOT / ".gitignore").read_text(encoding="utf-8")
+def test_local_tls_material_is_ignored_by_git_and_docker() -> None:
+    gitignore = (_ROOT / ".gitignore").read_text(encoding="utf-8")
+    dockerignore = (_ROOT / ".dockerignore").read_text(encoding="utf-8")
 
-    assert "docker/api-proxy/tls/" in text
+    assert "docker/api-proxy/tls/" in gitignore
+    assert "docker/api-proxy/tls" in dockerignore
 
 
 def test_deployment_docs_require_proxy_tls_and_reject_app_tls() -> None:
