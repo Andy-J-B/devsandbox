@@ -26,6 +26,8 @@ INTEGRATION_FINISHED = "integration.finished"
 TASK_RETRY_SCHEDULED = "task.retry_scheduled"
 TASK_EXHAUSTED = "task.exhausted"
 TASK_CANCELLED = "task.cancelled"
+TASK_PAUSED = "task.paused"
+TASK_RESUMED = "task.resumed"
 DEPENDENTS_BLOCKED = "task.dependents_blocked"
 TASK_OUTCOME_RECORDED = "task.outcome_recorded"
 

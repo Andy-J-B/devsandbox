@@ -82,6 +82,8 @@ def test_help_lists_commands(cli_settings) -> None:
         "report",
         "validate-spec",
         "cancel-task",
+        "pause-task",
+        "resume-task",
     ):
         assert command in result.stdout
 
@@ -225,3 +227,32 @@ def test_cancel_task_command(cli_settings, cli_db) -> None:
     payload = _json(result)
     assert payload["task_id"] == task_id
     assert payload["status"] == "cancelled"
+
+
+def test_pause_resume_task_commands(cli_settings, cli_db) -> None:
+    async def _seed() -> str:
+        engine = create_async_engine(cli_db)
+        maker = async_sessionmaker(bind=engine, expire_on_commit=False)
+        spec = load_spec(spec_yaml(name="pause-task-cli"))
+        _, _, tasks = await seed_project(
+            maker,
+            spec,
+            keys=["t-a"],
+            statuses={"t-a": TaskStatus.READY},
+            project_status="executing",
+        )
+        task_id = tasks["t-a"].id
+        await engine.dispose()
+        return task_id
+
+    task_id = asyncio.run(_seed())
+    paused = _invoke("--local", "--json", "pause-task", task_id)
+    assert paused.exit_code == 0, paused.stdout + paused.stderr
+    payload = _json(paused)
+    assert payload["task_id"] == task_id
+    assert payload["paused"] is True
+    assert payload["status"] == "ready"
+
+    resumed = _invoke("--local", "--json", "resume-task", task_id)
+    assert resumed.exit_code == 0, resumed.stdout + resumed.stderr
+    assert _json(resumed)["paused"] is False

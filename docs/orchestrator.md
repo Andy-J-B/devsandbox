@@ -116,6 +116,13 @@ most one attempt.
   the same path for every cancellable task (`cancel_running_project`).
   Cancellation is idempotent and never rewrites a terminal `COMPLETED` or
   `FAILED` task.
+- Pausing a task is a reversible hold (`tasks.paused`), not a new task state.
+  Only queued states (`PENDING`, `READY`, `RETRY_WAIT`) can be paused; held
+  tasks keep their status but are excluded from readiness promotion, the
+  scheduling snapshot, launch, and the engine's idle check. Active attempts
+  return `409` because aborting one would discard agent work; cancel the task
+  or pause the project instead. Resuming clears the flag so the next round can
+  promote or launch the task.
 - A clean shutdown stops launching, waits `shutdown_timeout_seconds` for
   in-flight attempts, cancels the remainder, marks attempts `abandoned`, and
   transitions affected tasks to `RETRY_WAIT` (or `READY` before the agent

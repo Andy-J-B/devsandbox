@@ -122,6 +122,35 @@ class TaskRepo:
         await self.session.execute(delete(TaskModel).where(TaskModel.plan_id == plan_id))
         await self.session.flush()
 
+    async def set_paused(
+        self,
+        task_id: TaskId,
+        paused: bool,
+        *,
+        from_states: list[TaskStatus],
+    ) -> bool:
+        """Atomically set/clear a task's reversible hold.
+
+        Only rows currently in ``from_states`` and at the opposite flag value
+        are updated.  Returns ``False`` when the CAS matches nothing so callers
+        can re-read and report the current state.
+        """
+        result = await self.session.execute(
+            update(TaskModel)
+            .where(
+                TaskModel.id == task_id,
+                TaskModel.status.in_([state.value for state in from_states]),
+                TaskModel.paused.is_(not paused),
+            )
+            .values(
+                paused=paused,
+                version=TaskModel.version + 1,
+                updated_at=utcnow(),
+            )
+            .returning(TaskModel.version)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def transition(
         self,
         task_id: TaskId,

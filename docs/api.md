@@ -99,6 +99,8 @@ All paths are prefixed with `/v1` except the two health probes.
 | `GET` | `/tasks/{task_id}/attempts/{n}` | Attempt detail with the independent validation report. |
 | `GET` | `/tasks/{task_id}/attempts/{n}/logs` | `?stream=agent|stdout|stderr&tail=N` (1..`api.max_log_lines`). Output is redacted. |
 | `POST` | `/tasks/{task_id}/cancel` | Cancel a queued or active task, block its dependents, and abort its in-flight attempt in the engine process. Idempotent; COMPLETED/FAILED/BLOCKED return `409`. |
+| `POST` | `/tasks/{task_id}/pause` | Reversibly hold a queued task (`PENDING`, `READY`, `RETRY_WAIT`) so the scheduler will not launch it. Idempotent; active/terminal tasks return `409`. |
+| `POST` | `/tasks/{task_id}/resume` | Clear a task hold; the next round may promote/launch it. Idempotent. |
 | `POST` | `/tasks/{task_id}/retry` | Re-opens only `BLOCKED` tasks as `PENDING`. `FAILED` is terminal (00 §7) and returns `409`; replan instead. `{"reset_budget": true}` resets attempt counters and is explicit/audited. |
 
 The log reader resolves the attempt's configured path, rejects anything outside

@@ -376,6 +376,40 @@ async def test_paused_project_does_not_launch_and_resume_starts_it(db_engine, se
     assert TaskStatus(row.status) is TaskStatus.COMPLETED
 
 
+async def test_paused_task_is_not_scheduled_until_resumed(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(
+        maker,
+        make_spec(),
+        keys=["t-a"],
+        statuses={"t-a": TaskStatus.READY},
+    )
+    agent = FakeAgentAdapter()
+    agent.queue_result(_result())
+    engine = _engine(maker, settings, clock, agent=agent)
+    assert engine.project_service is not None
+
+    paused = await engine.project_service.pause_task(tasks["t-a"].id)
+    assert paused.paused is True
+
+    await engine.run_until_idle()
+    assert agent.calls == []
+    row = await get_task(maker, tasks["t-a"].id)
+    assert TaskStatus(row.status) is TaskStatus.READY
+    assert row.paused is True
+
+    resumed = await engine.project_service.resume_task(tasks["t-a"].id)
+    assert resumed.paused is False
+
+    await engine.run_until_idle()
+    row = await get_task(maker, tasks["t-a"].id)
+    assert TaskStatus(row.status) is TaskStatus.COMPLETED
+    assert len(agent.calls) == 1
+    project = await get_project(maker, "proj-1")
+    assert ProjectStatus(project.status) is ProjectStatus.COMPLETED
+
+
 async def test_supervised_failure_emits_needs_attention(db_engine, settings) -> None:
     maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
     clock = FakeClock()

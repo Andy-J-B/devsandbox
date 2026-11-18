@@ -743,6 +743,41 @@ def cancel_task(ctx: typer.Context, task: str = typer.Argument(...)) -> None:
         )
 
 
+def _task_hold(ctx: typer.Context, task: str, action: str) -> None:
+    state = _state(ctx)
+    methods = {"pause-task": ApiClient.pause_task, "resume-task": ApiClient.resume_task}
+    method = methods[action]
+
+    async def _run() -> dict[str, Any]:
+        async with _client(state) as client:
+            return await method(client, task)
+
+    try:
+        result = asyncio.run(_run())
+    except CliError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+    if state.json_output:
+        _emit_json(result)
+    else:
+        console.print(
+            f"{action}: task={result.get('task_id')} status={result.get('status')} "
+            f"paused={result.get('paused')}"
+        )
+
+
+@app.command("pause-task")
+def pause_task(ctx: typer.Context, task: str = typer.Argument(...)) -> None:
+    """Pause a queued task (not an active attempt)."""
+    _task_hold(ctx, task, "pause-task")
+
+
+@app.command("resume-task")
+def resume_task(ctx: typer.Context, task: str = typer.Argument(...)) -> None:
+    """Resume a paused task."""
+    _task_hold(ctx, task, "resume-task")
+
+
 def main() -> None:
     """Console-script entrypoint."""
     try:

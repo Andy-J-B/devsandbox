@@ -163,6 +163,7 @@
       "id": "task-conflict-merge",
       "key": "merge",
       "max_retries": 1,
+      "paused": false,
       "priority": 50,
       "result": {},
       "status": "failed",

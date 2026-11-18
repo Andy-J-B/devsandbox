@@ -254,6 +254,7 @@ def _task_report(
         key=task.key,
         title=task.title,
         status=task.status,
+        paused=bool(task.paused),
         priority=task.priority,
         attempt_count=task.attempt_count,
         max_retries=task.max_retries,

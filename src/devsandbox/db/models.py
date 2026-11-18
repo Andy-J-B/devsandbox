@@ -110,6 +110,10 @@ class TaskModel(Base):
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    # Reversible user hold.  Unlike status, this does not change the state
+    # machine: queued tasks keep their state but are never placed in the
+    # scheduler's ready set while paused.
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     success_criteria_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     checks_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     expected_files_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)

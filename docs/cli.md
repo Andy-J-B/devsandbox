@@ -39,6 +39,7 @@ request logs (structured logging writes to stderr).
 | `devsandbox validate-spec SPEC` | Offline validation via the plan-01 loader; no DB/Docker needed. |
 | `devsandbox retry TASK [--reset-budget]` | Re-open a `BLOCKED` task (audited). `FAILED` tasks require a replan. |
 | `devsandbox cancel-task TASK` | Cancel one queued/running task and abort its in-flight attempt. |
+| `devsandbox pause-task TASK` / `resume-task TASK` | Reversibly hold/release one queued task. Active attempts are not pausable; cancel or pause the project instead. |
 
 ## Full supervised flow
 

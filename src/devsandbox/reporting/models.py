@@ -126,6 +126,7 @@ class ReportTask(BaseModel):
     key: str
     title: str
     status: str
+    paused: bool = False
     priority: int = 0
     attempt_count: int = 0
     max_retries: int = 0

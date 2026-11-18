@@ -64,6 +64,17 @@ class TaskCancellation:
     blocked_dependents: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class TaskPauseState:
+    """Outcome of setting a task's reversible pause flag."""
+
+    task_id: str
+    project_id: str
+    status: str
+    paused: bool
+    changed: bool = True
+
+
 class ProjectService:
     """Lifecycle owner for projects (spec §4 steps 1-6 and 15)."""
 
@@ -375,6 +386,7 @@ class ProjectService:
                         TaskStatus.CANCELLED,
                         f"cancelled by {requested_by}",
                         retry_not_before=None,
+                        paused=False,
                     )
                 except InvalidTransition:
                     # The task advanced between load and CAS; retry from the
@@ -409,6 +421,86 @@ class ProjectService:
                     blocked_dependents=[row.id for row in blocked],
                 )
         raise InvalidTransition(f"task {task_id} kept changing; retry cancellation")
+
+    async def set_task_paused(
+        self,
+        task_id: str,
+        paused: bool,
+        *,
+        requested_by: str = "user",
+    ) -> TaskPauseState:
+        """Set/clear the reversible task hold.
+
+        Only queued states (``PENDING``, ``READY``, ``RETRY_WAIT``) can be
+        paused.  Active attempts are not resumable, so pausing one would lose
+        agent work; cancel the attempt or pause the project instead.
+        """
+        async with self._session_factory() as session:
+            repo = TaskRepo(session)
+            task = await repo.get(TaskId(task_id))
+            if task is None:
+                raise TaskNotFoundError(f"task {task_id} not found")
+            status = TaskStatus(task.status)
+            if task.paused is paused:
+                return TaskPauseState(
+                    task_id=task_id,
+                    project_id=task.project_id,
+                    status=status.value,
+                    paused=paused,
+                    changed=False,
+                )
+            pausable = [TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RETRY_WAIT]
+            if status not in pausable:
+                raise InvalidTransition(self._task_hold_error(task_id, status, paused))
+            changed = await repo.set_paused(TaskId(task_id), paused, from_states=pausable)
+            if not changed:
+                # A concurrent transition or hold changed the row between load
+                # and CAS; report the current state instead of blindly writing.
+                latest = await repo.get(TaskId(task_id))
+                if latest is None:
+                    raise TaskNotFoundError(f"task {task_id} not found")
+                latest_status = TaskStatus(latest.status)
+                if latest.paused is paused:
+                    return TaskPauseState(
+                        task_id=task_id,
+                        project_id=latest.project_id,
+                        status=latest_status.value,
+                        paused=paused,
+                        changed=False,
+                    )
+                if latest_status not in pausable:
+                    raise InvalidTransition(self._task_hold_error(task_id, latest_status, paused))
+                raise InvalidTransition(f"task {task_id} kept changing; retry the hold")
+            await events.emit_event(
+                session,
+                project_id=task.project_id,
+                task_id=task_id,
+                event_type=events.TASK_PAUSED if paused else events.TASK_RESUMED,
+                payload={"requested_by": requested_by},
+            )
+            await session.commit()
+            return TaskPauseState(
+                task_id=task_id,
+                project_id=task.project_id,
+                status=status.value,
+                paused=paused,
+            )
+
+    @staticmethod
+    def _task_hold_error(task_id: str, status: TaskStatus, paused: bool) -> str:
+        action = "paused" if paused else "resumed"
+        return (
+            f"task {task_id} is {status.value} and cannot be {action}; "
+            "cancel an active attempt or pause the project instead"
+        )
+
+    async def pause_task(self, task_id: str, *, requested_by: str = "user") -> TaskPauseState:
+        """Pause a queued task (idempotent)."""
+        return await self.set_task_paused(task_id, True, requested_by=requested_by)
+
+    async def resume_task(self, task_id: str, *, requested_by: str = "user") -> TaskPauseState:
+        """Resume a paused task (idempotent)."""
+        return await self.set_task_paused(task_id, False, requested_by=requested_by)
 
     async def cancel(self, project_id: str) -> ProjectModel:
         """Cancel a project and all of its cancellable tasks.
@@ -622,4 +714,4 @@ class ProjectService:
             await session.commit()
 
 
-__all__ = ["BaselineRunner", "ProjectService", "TaskCancellation"]
+__all__ = ["BaselineRunner", "ProjectService", "TaskCancellation", "TaskPauseState"]

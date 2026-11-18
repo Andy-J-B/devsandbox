@@ -157,6 +157,7 @@
       "id": "task-all_success-build",
       "key": "build",
       "max_retries": 1,
+      "paused": false,
       "priority": 50,
       "result": {
         "commits": [
@@ -250,6 +251,7 @@
       "id": "task-all_success-test",
       "key": "test",
       "max_retries": 1,
+      "paused": false,
       "priority": 50,
       "result": {
         "commits": [

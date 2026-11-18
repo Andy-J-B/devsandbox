@@ -156,6 +156,7 @@
       "id": "task-policy_denial-guarded",
       "key": "guarded",
       "max_retries": 1,
+      "paused": false,
       "priority": 50,
       "result": {},
       "status": "failed",

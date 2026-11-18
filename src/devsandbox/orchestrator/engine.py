@@ -539,6 +539,10 @@ class OrchestratorEngine:
                 tasks = await tasks_repo.list_for_plan(project.active_plan_id)
                 by_id = {task.id: task for task in tasks}
                 for task in tasks:
+                    if task.paused:
+                        # A user hold is reversible and must not be clobbered by
+                        # readiness promotion or dependency blocking.
+                        continue
                     status = TaskStatus(task.status)
                     deps = await tasks_repo.dependencies_for_task(task.id)
                     dep_statuses = [TaskStatus(by_id[dep].status) for dep in deps if dep in by_id]
@@ -612,6 +616,8 @@ class OrchestratorEngine:
                 }
                 depths = _critical_path_lengths(tasks, dependencies)
                 for index, task in enumerate(tasks):
+                    if task.paused:
+                        continue
                     status = TaskStatus(task.status)
                     if status is TaskStatus.READY:
                         ready.append(
@@ -692,6 +698,8 @@ class OrchestratorEngine:
     async def _launch_locked(self, task_id: str) -> bool:
         task = await self._load_task(TaskId(task_id))
         if task is None or TaskStatus(task.status) is not TaskStatus.READY:
+            return False
+        if task.paused:
             return False
         project = await self._load_project(task.project_id)
         if project is None or ProjectStatus(project.status) is not ProjectStatus.EXECUTING:
@@ -2029,7 +2037,10 @@ class OrchestratorEngine:
                 if project.active_plan_id is None:
                     continue
                 tasks = await TaskRepo(session).list_for_plan(project.active_plan_id)
-                if any(TaskStatus(task.status) not in _TERMINAL_TASK_STATUSES for task in tasks):
+                if any(
+                    not task.paused and TaskStatus(task.status) not in _TERMINAL_TASK_STATUSES
+                    for task in tasks
+                ):
                     return True
         return False
 

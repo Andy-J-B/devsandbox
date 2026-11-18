@@ -648,6 +648,66 @@ async def test_project_pause_resume_and_cancel_controls(api) -> None:
     assert all(task["status"] == "cancelled" for task in tasks.json())
 
 
+async def test_task_pause_and_resume_hold_is_durable(api) -> None:
+    client, container = api
+    spec = load_spec(spec_yaml(name="pause-task-demo"))
+    _, _, tasks = await seed_project(
+        container.session_factory,
+        spec,
+        keys=["t-a"],
+        statuses={"t-a": TaskStatus.READY},
+        project_status="executing",
+    )
+    task_id = tasks["t-a"].id
+
+    paused = await client.post(f"/v1/tasks/{task_id}/pause", headers=HEADERS)
+    assert paused.status_code == 200, paused.text
+    assert paused.json()["paused"] is True
+    assert paused.json()["changed"] is True
+
+    again = await client.post(f"/v1/tasks/{task_id}/pause", headers=HEADERS)
+    assert again.status_code == 200
+    assert again.json()["changed"] is False
+
+    detail = await client.get(f"/v1/tasks/{task_id}", headers=HEADERS)
+    assert detail.json()["paused"] is True
+    assert detail.json()["status"] == "ready"
+    listed = await client.get("/v1/projects/proj-1/tasks", headers=HEADERS)
+    assert listed.json()[0]["paused"] is True
+    report = await client.get("/v1/projects/proj-1/report", headers=HEADERS)
+    assert report.json()["tasks"][0]["paused"] is True
+
+    resumed = await client.post(f"/v1/tasks/{task_id}/resume", headers=HEADERS)
+    assert resumed.status_code == 200
+    assert resumed.json()["paused"] is False
+    assert (await client.get(f"/v1/tasks/{task_id}", headers=HEADERS)).json()["paused"] is False
+
+    events = await client.get("/v1/projects/proj-1/events", headers=HEADERS)
+    event_types = {event["type"] for event in events.json()}
+    assert {"task.paused", "task.resumed"} <= event_types
+
+
+async def test_task_pause_only_accepts_queued_states(api) -> None:
+    client, container = api
+    spec = load_spec(spec_yaml(name="pause-state-demo"))
+    _, _, tasks = await seed_project(
+        container.session_factory,
+        spec,
+        keys=["running", "done"],
+        statuses={"running": TaskStatus.RUNNING, "done": TaskStatus.COMPLETED},
+        project_status="executing",
+    )
+
+    for key in ("running", "done"):
+        response = await client.post(f"/v1/tasks/{tasks[key].id}/pause", headers=HEADERS)
+        assert response.status_code == 409, (key, response.text)
+        assert _error_code(response) == "invalid_transition"
+
+    # Unknown tasks are 404 for both pause and resume.
+    assert (await client.post("/v1/tasks/missing/pause", headers=HEADERS)).status_code == 404
+    assert (await client.post("/v1/tasks/missing/resume", headers=HEADERS)).status_code == 404
+
+
 async def test_project_cancel_aborts_in_flight_attempts(api) -> None:
     client, container = api
     spec = load_spec(spec_yaml(name="cancel-running-demo"))

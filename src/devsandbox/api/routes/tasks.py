@@ -28,6 +28,7 @@ from ..schemas import (
     RetryResponse,
     TaskCancelResponse,
     TaskDetail,
+    TaskPauseResponse,
 )
 from ._common import get_container
 
@@ -165,6 +166,38 @@ async def cancel_task(request: Request, task_id: str) -> TaskCancelResponse:
         already_cancelled=outcome.already_cancelled,
         aborted=aborted,
         blocked_dependents=outcome.blocked_dependents,
+    )
+
+
+@router.post("/tasks/{task_id}/pause", response_model=TaskPauseResponse)
+async def pause_task(request: Request, task_id: str) -> TaskPauseResponse:
+    """Pause a queued task so the scheduler will not launch it.
+
+    Only PENDING/READY/RETRY_WAIT tasks can be paused.  Active attempts are not
+    resumable; cancel the task or pause the project instead.  Idempotent.
+    """
+    container = get_container(request)
+    outcome = await container.projects.pause_task(task_id, requested_by="api")
+    return TaskPauseResponse(
+        task_id=outcome.task_id,
+        project_id=outcome.project_id,
+        status=outcome.status,
+        paused=outcome.paused,
+        changed=outcome.changed,
+    )
+
+
+@router.post("/tasks/{task_id}/resume", response_model=TaskPauseResponse)
+async def resume_task(request: Request, task_id: str) -> TaskPauseResponse:
+    """Resume a paused task; the next scheduling round may promote/launch it."""
+    container = get_container(request)
+    outcome = await container.projects.resume_task(task_id, requested_by="api")
+    return TaskPauseResponse(
+        task_id=outcome.task_id,
+        project_id=outcome.project_id,
+        status=outcome.status,
+        paused=outcome.paused,
+        changed=outcome.changed,
     )
 
 

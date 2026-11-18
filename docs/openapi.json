@@ -2161,6 +2161,11 @@
             "title": "Max Retries",
             "type": "integer"
           },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
           "priority": {
             "default": 0,
             "title": "Priority",
@@ -2492,6 +2497,11 @@
             "title": "Max Retries",
             "type": "integer"
           },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
           "plan_id": {
             "title": "Plan Id",
             "type": "string"
@@ -2671,6 +2681,40 @@
         "title": "TaskDraft",
         "type": "object"
       },
+      "TaskPauseResponse": {
+        "description": "Result of pausing or resuming a queued task.",
+        "properties": {
+          "changed": {
+            "default": true,
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "project_id",
+          "status",
+          "paused"
+        ],
+        "title": "TaskPauseResponse",
+        "type": "object"
+      },
       "TaskSummary": {
         "description": "Task list row including attempt/failure information.",
         "properties": {
@@ -2751,6 +2795,11 @@
             "default": 0,
             "title": "Max Retries",
             "type": "integer"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
           },
           "plan_id": {
             "title": "Plan Id",
@@ -4011,6 +4060,92 @@
           }
         },
         "summary": "Cancel Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/pause": {
+      "post": {
+        "description": "Pause a queued task so the scheduler will not launch it.\n\nOnly PENDING/READY/RETRY_WAIT tasks can be paused.  Active attempts are not\nresumable; cancel the task or pause the project instead.  Idempotent.",
+        "operationId": "pause_task_v1_tasks__task_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPauseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/resume": {
+      "post": {
+        "description": "Resume a paused task; the next scheduling round may promote/launch it.",
+        "operationId": "resume_task_v1_tasks__task_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPauseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Task",
         "tags": [
           "tasks"
         ]

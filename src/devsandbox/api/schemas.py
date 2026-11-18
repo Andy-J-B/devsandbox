@@ -94,6 +94,16 @@ class TaskCancelResponse(BaseModel):
     blocked_dependents: list[str] = Field(default_factory=list)
 
 
+class TaskPauseResponse(BaseModel):
+    """Result of pausing or resuming a queued task."""
+
+    task_id: str
+    project_id: str
+    status: str
+    paused: bool
+    changed: bool = True
+
+
 class AttemptSummary(BaseModel):
     """One attempt of a task."""
 
@@ -138,6 +148,7 @@ class TaskSummary(BaseModel):
     key: str
     title: str
     status: str
+    paused: bool = False
     priority: int = 0
     attempt_count: int = 0
     max_retries: int = 0
@@ -265,5 +276,6 @@ __all__ = [
     "SystemStatus",
     "TaskCancelResponse",
     "TaskDetail",
+    "TaskPauseResponse",
     "TaskSummary",
 ]
