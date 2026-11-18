@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -22,7 +23,13 @@ from devsandbox.common.types import ProjectStatus, ResourceProfile, TaskStatus
 from devsandbox.config.policy import SecurityPolicy
 from devsandbox.config.settings import ModelBudget
 from devsandbox.db.models import TaskModel
-from devsandbox.db.repositories import AttemptRepo, EventRepo, IntegrationRepo, ProjectRepo
+from devsandbox.db.repositories import (
+    AttemptRepo,
+    EventRepo,
+    IntegrationRepo,
+    LeaseRepo,
+    ProjectRepo,
+)
 from devsandbox.gitmgr.interfaces import IntegrationResult
 from devsandbox.orchestrator.engine import OrchestratorEngine
 from devsandbox.orchestrator.models import OrchestratorConfig
@@ -90,6 +97,7 @@ def _engine(
         backoff_jitter_ratio=0.0,
         idle_sleep_seconds=0.001,
         tick_seconds=0.001,
+        shutdown_timeout_seconds=1.0,
     )
     service = None
     if project_service:
@@ -536,6 +544,93 @@ async def test_cancel_running_project_aborts_all_in_flight_project_attempts(
         assert engine._running == {}
     finally:
         await engine.release_lease()
+
+
+async def test_graceful_shutdown_abandons_attempt_and_hands_off_lease(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(maker, make_spec(), keys=["t-a"])
+    task_id = tasks["t-a"].id
+    agent = _BlockingAgent()
+    sandbox = FakeSandboxManager()
+    engine = _engine(maker, settings, clock, agent=agent, sandbox=sandbox)
+
+    run_task = asyncio.create_task(engine.run_forever(), name="graceful-engine")
+    await asyncio.wait_for(agent.started.wait(), timeout=5)
+    assert engine._lease_acquired
+
+    await engine.request_shutdown()
+    await asyncio.wait_for(run_task, timeout=10)
+
+    row = await get_task(maker, task_id)
+    assert TaskStatus(row.status) is TaskStatus.RETRY_WAIT
+    assert row.current_attempt_id is not None
+    async with maker() as session:
+        attempt = await AttemptRepo(session).get(row.current_attempt_id)
+        lease = await LeaseRepo(session).get("orchestrator")
+        engine_events = await EventRepo(session).list_for_project("system", limit=100)
+    assert attempt is not None
+    assert attempt.status == "abandoned"
+    assert f"ds-{row.current_attempt_id}" in sandbox.destroyed
+    # A clean shutdown releases the lease immediately rather than waiting for
+    # its TTL, so a standby can take over without a split-brain window.
+    assert lease is None
+    event_types = {event.type for event in engine_events}
+    assert {"ENGINE_STARTED", "ENGINE_STOPPED", "LEASE_ACQUIRED"} <= event_types
+
+    standby = _engine(maker, settings, clock)
+    await standby.acquire_lease()
+    try:
+        assert standby._lease_acquired
+    finally:
+        await standby.release_lease()
+
+
+async def test_duplicate_engine_never_runs_a_scheduling_round(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(maker, make_spec(), keys=["t-a"])
+    agent = FakeAgentAdapter()
+    first = _engine(maker, settings, clock, agent=agent)
+    second = _engine(maker, settings, clock, agent=agent)
+
+    await first.acquire_lease()
+    try:
+        with pytest.raises(OrchestratorAlreadyRunning):
+            await second.run_forever()
+        assert second._lease_acquired is False
+        # The duplicate must not have launched the READY task.
+        row = await get_task(maker, tasks["t-a"].id)
+        assert TaskStatus(row.status) is TaskStatus.PENDING
+        assert agent.calls == []
+    finally:
+        await first.release_lease()
+
+
+async def test_lost_lease_stops_the_engine_from_continuing(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    engine = _engine(maker, settings, clock)
+    await engine.acquire_lease()
+    try:
+        async with maker() as session:
+            await LeaseRepo(session).acquire(
+                "orchestrator",
+                "intruder",
+                clock.now + timedelta(seconds=120),
+            )
+            await session.commit()
+        # Lease refresh is skipped until half the TTL has elapsed.
+        clock.advance(31)
+        with pytest.raises(OrchestratorAlreadyRunning):
+            await engine._refresh_lease()
+    finally:
+        # The original holder must not delete the intruder's lease row.
+        await engine.release_lease()
+        async with maker() as session:
+            lease = await LeaseRepo(session).get("orchestrator")
+            assert lease is not None
+            assert lease.holder == "intruder"
 
 
 async def test_two_task_concurrency_integration_is_serialized(db_engine, settings) -> None:

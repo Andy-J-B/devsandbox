@@ -105,6 +105,22 @@ Each round:
 `READY → SCHEDULED` CAS, so a concurrent launch of the same task creates at
 most one attempt.
 
+### Pause, cancel, and shutdown
+
+- Pausing a project (`EXECUTING → PAUSED`) stops new launches; attempts that
+  are already running finish normally and the resume path continues from the
+  persisted task states.
+- Cancelling a task persists `CANCELLED` first, blocks its dependents, then
+  asks the engine that owns the lease to cancel the in-flight asyncio attempt
+  (`cancel_running_task`) and destroy its container. Project cancellation uses
+  the same path for every cancellable task (`cancel_running_project`).
+  Cancellation is idempotent and never rewrites a terminal `COMPLETED` or
+  `FAILED` task.
+- A clean shutdown stops launching, waits `shutdown_timeout_seconds` for
+  in-flight attempts, cancels the remainder, marks attempts `abandoned`, and
+  transitions affected tasks to `RETRY_WAIT` (or `READY` before the agent
+  started) so a restarted or standby engine resumes them.
+
 ### Per-attempt pipeline (persist before act)
 
 1. `READY → SCHEDULED` (CAS) and insert the `attempts` row, committed before
@@ -221,6 +237,10 @@ attempts, paused flag, lease holder, and the last round time.
 `request_shutdown()` stops launching; `shutdown()` waits up to
 `shutdown_timeout_seconds` for in-flight attempts, cancels the remainder,
 persists their state (shielded), emits `ENGINE_STOPPED`, and releases the lease.
+Because the lease is released rather than left to expire, a standby process can
+acquire it immediately after a clean shutdown; a second live process is still
+refused while the first owns the lease, and a lost lease stops the current
+process instead of running with split brain.
 
 ## Configuration
 
