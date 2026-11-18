@@ -1,0 +1,38 @@
+# TLS reverse proxy for the DevSandbox API (see docs/deployment.md).
+#
+# Usage, from the repository root:
+#
+#   docker compose -f docker/compose.yaml \
+#     -f docker/api-proxy/compose.override.yaml up -d
+#
+# Relative paths resolve from docker/ (the first compose file's directory).
+# The proxy publishes the only public ports; the orchestrator keeps its
+# loopback-only 127.0.0.1:8000 mapping from the base file.  Do not change that
+# mapping to 0.0.0.0.
+#
+# Before starting, create docker/api-proxy/tls/server.crt and server.key and
+# make the key readable by the unprivileged nginx user (UID 101).  See
+# docker/api-proxy/README.md.  Never commit TLS material.
+
+services:
+  api-proxy:
+    # Pin by digest before production use; see docs/images.md.
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    depends_on:
+      orchestrator:
+        condition: service_started
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - ./api-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./api-proxy/tls/server.crt:/etc/nginx/tls/server.crt:ro
+      - ./api-proxy/tls/server.key:/etc/nginx/tls/server.key:ro
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

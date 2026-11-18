@@ -239,34 +239,52 @@ it as an authenticated administrative interface:
 - terminate slow clients and cap request bodies in the proxy. The app's own
   cap is `api.max_spec_bytes` (default 1 MiB).
 
-Minimal nginx TLS terminator:
+### Proxy-first deployment assets
 
-```nginx
-server {
-    listen 443 ssl;
-    server_name devsandbox.internal.example;
+The repository ships a hardened nginx example under
+[`docker/api-proxy/`](../docker/api-proxy/):
 
-    ssl_certificate     /etc/ssl/certs/devsandbox.crt;
-    ssl_certificate_key /etc/ssl/private/devsandbox.key;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    add_header Strict-Transport-Security "max-age=31536000" always;
-    client_max_body_size 2m;
+- `nginx.conf` is a complete config for the unprivileged nginx image. It
+  enables TLS 1.2/1.3, HSTS and the other security headers, forwards
+  `Authorization` unchanged, caps request bodies at 2 MiB, disables response
+  buffering for the SSE event stream, and applies a per-IP edge rate limit.
+- `compose.override.yaml` adds the proxy in front of the compose
+  `orchestrator` service. Only the proxy publishes public ports (80 and 443);
+  port 80 permanently redirects to HTTPS.
+- `README.md` covers certificate creation, key permissions, and verification.
+- `tls/` holds local certificate material and is ignored by Git.
 
-    location / {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header   Authorization     $http_authorization;
-        proxy_read_timeout 300s;
-    }
-}
+Start the stack from the repository root:
+
+```bash
+export DEVSANDBOX_API_TOKEN="$(openssl rand -hex 32)"
+docker compose -f docker/compose.yaml \
+  -f docker/api-proxy/compose.override.yaml up -d
 ```
 
-Do not log `Authorization` headers at the proxy. The app never logs the token;
-its request log records method, path, status, and duration only. The in-memory
-rate limiter is per API process, so run a single process or add proxy/ingress
-rate limiting if you scale horizontally.
+The base compose file keeps `127.0.0.1:8000:8000` for local checks. That mapping
+is loopback-only; never widen it to `0.0.0.0`, and do not bypass the proxy for
+remote access. Inside the compose network the proxy reaches the app at
+`orchestrator:8000`; the app itself still binds `0.0.0.0` only because it is
+inside that private network.
+
+**Direct TLS in the app is intentionally unsupported.** Do not add
+`ssl_certfile`/`ssl_keyfile` settings or pass `--ssl-*` options to uvicorn.
+uvicorn TLS termination would be a second, less-reviewed surface with its own
+certificate reload, cipher, and header behaviour. Terminate TLS at the proxy or
+ingress controller instead.
+
+If the API runs directly on the host (`devsandbox serve`), either run nginx on
+the host and change the upstream to `127.0.0.1:8000`, or use
+`host.docker.internal:8000` from a proxy container on Docker Desktop.
+
+Do not log `Authorization` headers at the proxy. The bundled config omits
+request headers from its access log, and the app never logs the token; its
+request log records method, path, status, and duration only. The in-memory rate
+limiter is per API process, so run a single process or add proxy/ingress rate
+limiting if you scale horizontally. The bundled per-IP limiter is a coarse
+flood control, not a substitute for the app's authenticated expensive-endpoint
+limiter.
 
 ### Rotating the bearer token
 

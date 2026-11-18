@@ -1,13 +1,15 @@
 # Image pinning and upgrades
 
-DevSandbox launches four kinds of container:
+DevSandbox uses these container images (the API TLS proxy is an optional
+deployment asset, not launched by the orchestrator):
 
-| Image | Built from | Default reference |
+| Image | Source | Default reference |
 | --- | --- | --- |
 | Agent | `docker/agent-base/Dockerfile` | `devsandbox/agent:latest` |
 | Validator | `docker/validator-base/Dockerfile` | `devsandbox/validator:latest` |
 | Egress proxy (allowlist mode) | `docker/egress-proxy/Dockerfile` | `devsandbox/egress-proxy:latest` |
 | Orchestrator | `docker/orchestrator/Dockerfile` | `devsandbox/orchestrator:local` |
+| API TLS proxy (optional) | `docker/api-proxy/compose.override.yaml` | `nginxinc/nginx-unprivileged:1.27-alpine` |
 
 Tags such as `:latest` are mutable. A registry owner can repoint them, and a
 `docker pull` can silently replace the code that runs with Docker-socket access
@@ -46,6 +48,11 @@ running the container. The accepted forms are:
   version.
 - Validator Python tools are installed at exact versions:
   `pytest==9.2.0`, `pytest-asyncio==1.4.1.post1`, `ruff==0.17.4`.
+
+The optional API TLS proxy image is referenced by tag
+(`nginxinc/nginx-unprivileged:1.27-alpine`) in
+`docker/api-proxy/compose.override.yaml`. Pin it by digest before production
+use, like any other externally supplied image.
 
 Application images (`devsandbox/agent`, `devsandbox/validator`,
 `devsandbox/egress-proxy`, `devsandbox/orchestrator`) are still built locally

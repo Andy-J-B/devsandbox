@@ -75,8 +75,10 @@ ollama pull qwen3:8b
 The API refuses to start without `DEVSANDBOX_API_TOKEN`. The token is compared
 in constant time and must be sent as `Authorization: Bearer <token>`. The API
 binds to `127.0.0.1` by default and has no CORS middleware. If you expose it
-beyond loopback, terminate TLS at a proxy; use
-`DEVSANDBOX_API__ADDITIONAL_TOKENS` for a zero-downtime token rotation. See
+beyond loopback, terminate TLS at a proxy; the app has no direct TLS options.
+See [`docker/api-proxy/`](../docker/api-proxy/) for a ready-to-run nginx
+override, and use `DEVSANDBOX_API__ADDITIONAL_TOKENS` for a zero-downtime token
+rotation. See
 [deployment.md](deployment.md#6-api-exposure-tls-and-token-rotation).
 
 Note that `DEVSANDBOX_AGENT__DEFAULT_MODEL` alone is not enough for a local

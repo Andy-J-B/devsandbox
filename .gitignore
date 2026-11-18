@@ -228,3 +228,6 @@ plans/
 .devsandbox/
 .devsandbox-*/
 .pytest-tmp/
+
+# Local TLS material for the API reverse proxy (docker/api-proxy/)
+docker/api-proxy/tls/

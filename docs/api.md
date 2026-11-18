@@ -11,7 +11,7 @@ committed schema is [`openapi.json`](openapi.json) and is kept current by
 | --- | --- |
 | Binding | `DEVSANDBOX_API__HOST` defaults to `127.0.0.1` |
 | Authentication | required static bearer token (`DEVSANDBOX_API_TOKEN` or `DEVSANDBOX_API__TOKEN`), constant-time comparison; `api.additional_tokens` keeps old tokens valid during rotation |
-| Transport | loopback by default; expose remotely only behind TLS termination (see [deployment.md](deployment.md#6-api-exposure-tls-and-token-rotation)) |
+| Transport | loopback by default; expose remotely only behind TLS termination (see [deployment.md](deployment.md#6-api-exposure-tls-and-token-rotation)). The app does not terminate TLS itself |
 | CORS | no CORS middleware is installed |
 | Policy mutation | no route can change network/resource/push/main-merge policy; those come only from settings files/env |
 | Mode escalation | `POST /v1/projects/{id}/mode` is the only mode change; supervised → autonomous is rejected unless `security.allow_autonomous_mode` is true and the caller is explicit |

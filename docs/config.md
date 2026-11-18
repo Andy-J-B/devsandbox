@@ -40,6 +40,8 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   ignored), `max_spec_bytes`, `max_log_bytes`, `max_log_lines`,
   `expensive_rate_limit_per_minute`, `request_id_header`, `run_engine`.
   Rotation and TLS/ingress guidance: [deployment.md](deployment.md#6-api-exposure-tls-and-token-rotation).
+  There are deliberately no uvicorn certificate/key settings: TLS terminates at
+  the shipped reverse-proxy example or your ingress controller.
 - `agent`: `default_runtime`, `default_provider`, `default_model`, `image`,
   `base_url`, `secret_ref`, `model_budget`
   - `default_runtime` selects the adapter: `opencode` (default) or
