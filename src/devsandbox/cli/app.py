@@ -720,6 +720,29 @@ def retry(
         )
 
 
+@app.command("cancel-task")
+def cancel_task(ctx: typer.Context, task: str = typer.Argument(...)) -> None:
+    """Cancel one queued or running task (idempotent)."""
+    state = _state(ctx)
+
+    async def _run() -> dict[str, Any]:
+        async with _client(state) as client:
+            return await client.cancel_task(task)
+
+    try:
+        result = asyncio.run(_run())
+    except CliError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+    if state.json_output:
+        _emit_json(result)
+    else:
+        console.print(
+            f"cancel-task: task={result.get('task_id')} status={result.get('status')} "
+            f"aborted={result.get('aborted')}"
+        )
+
+
 def main() -> None:
     """Console-script entrypoint."""
     try:

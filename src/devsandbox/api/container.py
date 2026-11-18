@@ -34,6 +34,10 @@ class EngineController(Protocol):
 
     async def status(self) -> EngineStatus: ...
 
+    async def cancel_running_task(self, task_id: str) -> bool: ...
+
+    async def cancel_running_project(self, project_id: str) -> int: ...
+
 
 @dataclass(frozen=True)
 class AppContainer:

@@ -453,6 +453,91 @@ async def test_second_orchestrator_refuses_to_start(db_engine, settings) -> None
         await first.release_lease()
 
 
+class _BlockingAgent(FakeAgentAdapter):
+    """Agent fake that signals when it starts and then blocks until cancelled."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = asyncio.Event()
+
+    async def run(self, req: AgentRunRequest) -> AgentRunResult:
+        self.calls.append(req)
+        self.started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+
+async def test_cancel_running_task_aborts_attempt_and_keeps_cancelled_state(
+    db_engine, settings
+) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(maker, make_spec(), keys=["t-a"])
+    task_id = tasks["t-a"].id
+    agent = _BlockingAgent()
+    sandbox = FakeSandboxManager()
+    engine = _engine(maker, settings, clock, agent=agent, sandbox=sandbox)
+    await engine.acquire_lease()
+    try:
+        assert await engine.run_once() == 1
+        await asyncio.wait_for(agent.started.wait(), timeout=5)
+
+        # API/service cancellation persists the terminal state first.
+        assert engine.project_service is not None
+        outcome = await engine.project_service.cancel_task(task_id, requested_by="test")
+        assert outcome.blocked_dependents == []
+        assert await engine.cancel_running_task(task_id) is True
+
+        row = await get_task(maker, task_id)
+        assert TaskStatus(row.status) is TaskStatus.CANCELLED
+        assert engine._running == {}
+        attempt_id = row.current_attempt_id
+        assert attempt_id is not None
+        async with maker() as session:
+            attempt = await AttemptRepo(session).get(attempt_id)
+        assert attempt is not None
+        assert attempt.status == "abandoned"
+        assert f"ds-{attempt_id}" in sandbox.destroyed
+    finally:
+        await engine.release_lease()
+
+
+async def test_cancel_running_project_aborts_all_in_flight_project_attempts(
+    db_engine, settings
+) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(maker, make_spec(), keys=["t-a", "t-b"])
+    agent = _BlockingAgent()
+    engine = _engine(
+        maker,
+        settings,
+        clock,
+        agent=agent,
+        scheduler_config=SchedulerConfig(max_global_concurrency=2, max_project_concurrency=2),
+    )
+    await engine.acquire_lease()
+    try:
+        assert await engine.run_once() == 2
+        # Both attempts enter the agent before cancellation.
+        for _ in range(100):
+            if len(agent.calls) == 2:
+                break
+            await asyncio.sleep(0.01)
+        assert len(agent.calls) == 2
+
+        assert engine.project_service is not None
+        await engine.project_service.cancel("proj-1")
+        assert await engine.cancel_running_project("proj-1") == 2
+
+        for key in ("t-a", "t-b"):
+            row = await get_task(maker, tasks[key].id)
+            assert TaskStatus(row.status) is TaskStatus.CANCELLED
+        assert engine._running == {}
+    finally:
+        await engine.release_lease()
+
+
 async def test_two_task_concurrency_integration_is_serialized(db_engine, settings) -> None:
     maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
     clock = FakeClock()

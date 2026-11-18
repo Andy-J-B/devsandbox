@@ -231,6 +231,10 @@ class ApiClient:
         )
         return value if isinstance(value, dict) else {}
 
+    async def cancel_task(self, task_id: str) -> dict[str, Any]:
+        value = await self._request("POST", f"/v1/tasks/{task_id}/cancel")
+        return value if isinstance(value, dict) else {}
+
     # ------------------------------------------------------------------- events
     async def events(
         self, project_id: str, *, since: str | None = None, limit: int = 500

@@ -24,10 +24,14 @@ TOKEN = "test-token"
 
 @dataclass
 class FakeEngine:
-    """Engine controller fake used by ``/system/status``."""
+    """Engine controller fake used by ``/system/status`` and control routes."""
 
     statuses: list[EngineStatus] = field(default_factory=list)
     calls: int = 0
+    cancelled_tasks: list[str] = field(default_factory=list)
+    cancelled_projects: list[str] = field(default_factory=list)
+    running_task_ids: set[str] = field(default_factory=set)
+    running_projects: dict[str, str] = field(default_factory=dict)
 
     async def status(self) -> EngineStatus:
         self.calls += 1
@@ -43,6 +47,14 @@ class FakeEngine:
             paused=False,
             lease_holder="test-holder",
         )
+
+    async def cancel_running_task(self, task_id: str) -> bool:
+        self.cancelled_tasks.append(task_id)
+        return task_id in self.running_task_ids
+
+    async def cancel_running_project(self, project_id: str) -> int:
+        self.cancelled_projects.append(project_id)
+        return sum(1 for owner in self.running_projects.values() if owner == project_id)
 
 
 def make_settings(

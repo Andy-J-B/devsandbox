@@ -21,7 +21,14 @@ from ..queries import (
     task_attempts,
     task_detail,
 )
-from ..schemas import AttemptDetail, LogChunk, RetryRequest, RetryResponse, TaskDetail
+from ..schemas import (
+    AttemptDetail,
+    LogChunk,
+    RetryRequest,
+    RetryResponse,
+    TaskCancelResponse,
+    TaskDetail,
+)
 from ._common import get_container
 
 router = APIRouter(tags=["tasks"])
@@ -135,6 +142,29 @@ async def get_attempt_logs(
         lines=lines,
         truncated=truncated,
         path=str(path),
+    )
+
+
+@router.post("/tasks/{task_id}/cancel", response_model=TaskCancelResponse)
+async def cancel_task(request: Request, task_id: str) -> TaskCancelResponse:
+    """Cancel a queued or active task.
+
+    The durable status change happens first (CANCELLED is terminal), then the
+    engine process that owns the lease aborts the in-flight attempt and
+    destroys its container.  Repeated calls are idempotent.  COMPLETED,
+    FAILED, and BLOCKED tasks cannot be cancelled.
+    """
+    container = get_container(request)
+    outcome = await container.projects.cancel_task(task_id, requested_by="api")
+    aborted = False
+    if container.engine is not None and not outcome.already_cancelled:
+        aborted = await container.engine.cancel_running_task(task_id)
+    return TaskCancelResponse(
+        task_id=task_id,
+        project_id=outcome.project_id,
+        already_cancelled=outcome.already_cancelled,
+        aborted=aborted,
+        blocked_dependents=outcome.blocked_dependents,
     )
 
 

@@ -442,6 +442,34 @@ class OrchestratorEngine:
         self._shutdown = True
         self._wake.set()
 
+    async def cancel_running_task(self, task_id: str) -> bool:
+        """Abort an in-flight attempt for ``task_id`` in this engine process.
+
+        The database state is owned by :class:`ProjectService.cancel_task`,
+        which must transition the task to CANCELLED *before* this is called.
+        That ordering closes the scheduler race and tells the cancelled
+        attempt's cleanup path not to resurrect a retry row.
+        """
+        runner = self._running.get(task_id)
+        if runner is None or runner.done():
+            return False
+        runner.cancel()
+        await asyncio.gather(runner, return_exceptions=True)
+        return True
+
+    async def cancel_running_project(self, project_id: str) -> int:
+        """Abort every in-flight attempt belonging to ``project_id``."""
+        async with self._session_factory() as session:
+            rows = await TaskRepo(session).list_for_project(project_id)
+        project_tasks = {row.id for row in rows}
+        task_ids = [task_id for task_id in self._running if task_id in project_tasks]
+        runners = [self._running[task_id] for task_id in task_ids]
+        for runner in runners:
+            runner.cancel()
+        if runners:
+            await asyncio.gather(*runners, return_exceptions=True)
+        return len(runners)
+
     async def shutdown(self) -> None:
         """Gracefully stop: wait briefly, then cancel and persist state."""
         self._shutdown = True

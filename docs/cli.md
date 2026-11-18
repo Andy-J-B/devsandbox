@@ -38,6 +38,7 @@ request logs (structured logging writes to stderr).
 | `devsandbox report PROJECT [--out FILE] [--format markdown\|json\|html]` | Write/print the deterministic report. `--json` forces JSON. |
 | `devsandbox validate-spec SPEC` | Offline validation via the plan-01 loader; no DB/Docker needed. |
 | `devsandbox retry TASK [--reset-budget]` | Re-open a `BLOCKED` task (audited). `FAILED` tasks require a replan. |
+| `devsandbox cancel-task TASK` | Cancel one queued/running task and abort its in-flight attempt. |
 
 ## Full supervised flow
 

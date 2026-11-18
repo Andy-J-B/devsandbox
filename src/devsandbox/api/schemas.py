@@ -83,6 +83,17 @@ class RetryResponse(BaseModel):
     reset_budget: bool = False
 
 
+class TaskCancelResponse(BaseModel):
+    """Result of an idempotent task cancellation."""
+
+    task_id: str
+    project_id: str
+    status: str = "cancelled"
+    already_cancelled: bool = False
+    aborted: bool = False
+    blocked_dependents: list[str] = Field(default_factory=list)
+
+
 class AttemptSummary(BaseModel):
     """One attempt of a task."""
 
@@ -252,6 +263,7 @@ __all__ = [
     "RetryResponse",
     "SubmitProjectRequest",
     "SystemStatus",
+    "TaskCancelResponse",
     "TaskDetail",
     "TaskSummary",
 ]

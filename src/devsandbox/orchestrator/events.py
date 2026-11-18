@@ -25,6 +25,7 @@ INTEGRATION_PREPARED = "integration.prepared"
 INTEGRATION_FINISHED = "integration.finished"
 TASK_RETRY_SCHEDULED = "task.retry_scheduled"
 TASK_EXHAUSTED = "task.exhausted"
+TASK_CANCELLED = "task.cancelled"
 DEPENDENTS_BLOCKED = "task.dependents_blocked"
 TASK_OUTCOME_RECORDED = "task.outcome_recorded"
 
@@ -125,6 +126,7 @@ __all__ = [
     "RECOVERY_COMPLETED",
     "RESOURCE_PRESSURE",
     "SCHEDULE_DECISION",
+    "TASK_CANCELLED",
     "TASK_EXHAUSTED",
     "TASK_OUTCOME_RECORDED",
     "TASK_RETRY_SCHEDULED",

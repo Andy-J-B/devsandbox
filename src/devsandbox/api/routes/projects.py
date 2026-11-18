@@ -193,6 +193,11 @@ async def resume_project(request: Request, project_id: str) -> ProjectSummary:
 async def cancel_project(request: Request, project_id: str) -> ProjectSummary:
     container = get_container(request)
     await container.projects.cancel(project_id)
+    # The project service persists CANCELLED for every cancellable task.  The
+    # engine process that owns the lease then aborts any attempts that are
+    # still running so cancellation is not merely a database flag.
+    if container.engine is not None:
+        await container.engine.cancel_running_project(project_id)
     async with container.session_factory() as session:
         return await project_view(session, await load_project(session, project_id))
 

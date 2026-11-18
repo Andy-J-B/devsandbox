@@ -76,9 +76,9 @@ All paths are prefixed with `/v1` except the two health probes.
 | `POST` | `/projects/{id}/plans` | Generate the next plan version. Automatically analyzes a `LOADED` project, so `submit → plan` works directly. |
 | `GET` | `/projects/{id}/plans` | Plan versions; `?format=markdown` renders all plans as text. |
 | `POST` | `/projects/{id}/start` | Start/resume execution; idempotent for an approved plan. |
-| `POST` | `/projects/{id}/pause` | Persist a pause request; scheduling stops. |
-| `POST` | `/projects/{id}/resume` | Resume a paused project. |
-| `POST` | `/projects/{id}/cancel` | Cancel every non-terminal task. |
+| `POST` | `/projects/{id}/pause` | Stop scheduling new tasks (in-flight attempts finish normally). Idempotent. |
+| `POST` | `/projects/{id}/resume` | Resume a paused project. Idempotent. |
+| `POST` | `/projects/{id}/cancel` | Cancel every cancellable task and abort in-flight attempts in the engine process. Idempotent for an already-cancelled project. |
 | `POST` | `/projects/{id}/mode` | Body `{"mode": "supervised"|"autonomous"}`; policy-checked and audited. |
 | `GET` | `/projects/{id}/tasks` | Task rows with attempts, dependencies, and failure info. |
 
@@ -98,6 +98,7 @@ All paths are prefixed with `/v1` except the two health probes.
 | `GET` | `/tasks/{task_id}` | Full task detail plus attempts and dependencies. |
 | `GET` | `/tasks/{task_id}/attempts/{n}` | Attempt detail with the independent validation report. |
 | `GET` | `/tasks/{task_id}/attempts/{n}/logs` | `?stream=agent|stdout|stderr&tail=N` (1..`api.max_log_lines`). Output is redacted. |
+| `POST` | `/tasks/{task_id}/cancel` | Cancel a queued or active task, block its dependents, and abort its in-flight attempt in the engine process. Idempotent; COMPLETED/FAILED/BLOCKED return `409`. |
 | `POST` | `/tasks/{task_id}/retry` | Re-opens only `BLOCKED` tasks as `PENDING`. `FAILED` is terminal (00 §7) and returns `409`; replan instead. `{"reset_budget": true}` resets attempt counters and is explicit/audited. |
 
 The log reader resolves the attempt's configured path, rejects anything outside

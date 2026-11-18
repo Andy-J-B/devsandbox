@@ -2346,6 +2346,47 @@
         "title": "SystemStatus",
         "type": "object"
       },
+      "TaskCancelResponse": {
+        "description": "Result of an idempotent task cancellation.",
+        "properties": {
+          "aborted": {
+            "default": false,
+            "title": "Aborted",
+            "type": "boolean"
+          },
+          "already_cancelled": {
+            "default": false,
+            "title": "Already Cancelled",
+            "type": "boolean"
+          },
+          "blocked_dependents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked Dependents",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "cancelled",
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "project_id"
+        ],
+        "title": "TaskCancelResponse",
+        "type": "object"
+      },
       "TaskDetail": {
         "description": "Full task detail used by the task page / CLI.",
         "properties": {
@@ -3927,6 +3968,49 @@
           }
         },
         "summary": "Get Attempt Logs",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/cancel": {
+      "post": {
+        "description": "Cancel a queued or active task.\n\nThe durable status change happens first (CANCELLED is terminal), then the\nengine process that owns the lease aborts the in-flight attempt and\ndestroys its container.  Repeated calls are idempotent.  COMPLETED,\nFAILED, and BLOCKED tasks cannot be cancelled.",
+        "operationId": "cancel_task_v1_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Task",
         "tags": [
           "tasks"
         ]

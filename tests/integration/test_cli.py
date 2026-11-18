@@ -81,6 +81,7 @@ def test_help_lists_commands(cli_settings) -> None:
         "events",
         "report",
         "validate-spec",
+        "cancel-task",
     ):
         assert command in result.stdout
 
@@ -200,3 +201,27 @@ def test_logs_show_redacted_attempt_output(cli_settings, cli_db, tmp_path) -> No
     assert "agent output" in result.stdout
     assert "clisecretvalue" not in result.stdout
     assert "[REDACTED]" in result.stdout
+
+
+def test_cancel_task_command(cli_settings, cli_db) -> None:
+    async def _seed() -> str:
+        engine = create_async_engine(cli_db)
+        maker = async_sessionmaker(bind=engine, expire_on_commit=False)
+        spec = load_spec(spec_yaml(name="cancel-task-cli"))
+        _, _, tasks = await seed_project(
+            maker,
+            spec,
+            keys=["t-a"],
+            statuses={"t-a": TaskStatus.READY},
+            project_status="executing",
+        )
+        task_id = tasks["t-a"].id
+        await engine.dispose()
+        return task_id
+
+    task_id = asyncio.run(_seed())
+    result = _invoke("--local", "--json", "cancel-task", task_id)
+    assert result.exit_code == 0, result.stdout + result.stderr
+    payload = _json(result)
+    assert payload["task_id"] == task_id
+    assert payload["status"] == "cancelled"

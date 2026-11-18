@@ -9,11 +9,17 @@ or git operations.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ..common.errors import InvalidTransition, PolicyViolation, ProjectNotFoundError
+from ..common.errors import (
+    InvalidTransition,
+    PolicyViolation,
+    ProjectNotFoundError,
+    TaskNotFoundError,
+)
 from ..common.ids import TaskId, new_project_id
 from ..common.types import (
     CheckSpec,
@@ -39,12 +45,23 @@ from . import events
 from .models import OrchestratorConfig
 from .state_machine import (
     ModeChangeDirection,
+    is_legal,
     is_legal_project,
     mode_change_direction,
 )
 from .support import repo_handle_for_project, spec_from_project
 
 BaselineRunner = Callable[[RepoHandle, str, list[CheckSpec]], Awaitable[ValidationReport]]
+
+
+@dataclass(frozen=True)
+class TaskCancellation:
+    """Outcome of an idempotent task cancellation."""
+
+    task_id: str
+    project_id: str
+    already_cancelled: bool = False
+    blocked_dependents: list[str] = field(default_factory=list)
 
 
 class ProjectService:
@@ -322,42 +339,118 @@ class ProjectService:
         )
         return await self._get_project(project_id)
 
+    async def cancel_task(self, task_id: str, *, requested_by: str = "user") -> TaskCancellation:
+        """Cancel one task and block its dependents.
+
+        Cancellation is idempotent for an already-cancelled task.  Terminal
+        Completed/failed tasks cannot be rewritten, and BLOCKED has no legal
+        edge to CANCELLED in the authoritative state machine; those return a
+        clear conflict instead of being silently changed.
+        """
+        for _attempt in range(4):
+            async with self._session_factory() as session:
+                task = await TaskRepo(session).get(TaskId(task_id))
+                if task is None:
+                    raise TaskNotFoundError(f"task {task_id} not found")
+                status = TaskStatus(task.status)
+                if status is TaskStatus.CANCELLED:
+                    return TaskCancellation(
+                        task_id=task_id,
+                        project_id=task.project_id,
+                        already_cancelled=True,
+                    )
+                if status in {
+                    TaskStatus.COMPLETED,
+                    TaskStatus.FAILED,
+                    TaskStatus.BLOCKED,
+                }:
+                    raise InvalidTransition(
+                        f"task {task_id} is {status.value} and cannot be cancelled"
+                    )
+                tasks = TaskRepo(session, is_legal)
+                try:
+                    await tasks.transition(
+                        TaskId(task_id),
+                        [status],
+                        TaskStatus.CANCELLED,
+                        f"cancelled by {requested_by}",
+                        retry_not_before=None,
+                    )
+                except InvalidTransition:
+                    # The task advanced between load and CAS; retry from the
+                    # new state instead of reporting a spurious conflict.
+                    await session.rollback()
+                    continue
+                blocked = await tasks.mark_dependents_blocked(
+                    task_id, reason=f"dependency {task.key} cancelled"
+                )
+                await events.emit_event(
+                    session,
+                    project_id=task.project_id,
+                    task_id=task_id,
+                    event_type=events.TASK_CANCELLED,
+                    payload={
+                        "requested_by": requested_by,
+                        "blocked_dependents": [row.id for row in blocked],
+                    },
+                )
+                if blocked:
+                    await events.emit_event(
+                        session,
+                        project_id=task.project_id,
+                        task_id=task_id,
+                        event_type=events.DEPENDENTS_BLOCKED,
+                        payload={"blocked": [row.id for row in blocked]},
+                    )
+                await session.commit()
+                return TaskCancellation(
+                    task_id=task_id,
+                    project_id=task.project_id,
+                    blocked_dependents=[row.id for row in blocked],
+                )
+        raise InvalidTransition(f"task {task_id} kept changing; retry cancellation")
+
     async def cancel(self, project_id: str) -> ProjectModel:
-        """Cancel a project and all of its non-terminal tasks."""
+        """Cancel a project and all of its cancellable tasks.
+
+        Scheduling is stopped first (EXECUTING -> PAUSED) so a scheduler round
+        cannot launch a task while cancellation is in progress.  The caller
+        (the API/orchestrator process that owns the lease) is responsible for
+        aborting any in-flight attempt after this returns; the engine exposes
+        ``cancel_running_project`` for exactly that.
+        """
         project = await self._get_project(project_id)
         status = ProjectStatus(project.status)
         if status is ProjectStatus.CANCELLED:
             return project
+        if status in {ProjectStatus.COMPLETED, ProjectStatus.FAILED}:
+            raise InvalidTransition(
+                f"project {project_id} is {status.value} and cannot be cancelled"
+            )
+        if status is ProjectStatus.EXECUTING:
+            await self._transition_project(
+                project_id,
+                [ProjectStatus.EXECUTING],
+                ProjectStatus.PAUSED,
+                "cancel requested",
+            )
+            status = ProjectStatus.PAUSED
+
         async with self._session_factory() as session:
-            tasks = TaskRepo(session)
-            for task in await tasks.list_for_project(project_id):
-                if TaskStatus(task.status) in {
-                    TaskStatus.COMPLETED,
-                    TaskStatus.FAILED,
-                    TaskStatus.BLOCKED,
-                    TaskStatus.CANCELLED,
-                }:
-                    continue
-                try:
-                    await tasks.transition(
-                        TaskId(task.id),
-                        [TaskStatus(task.status)],
-                        TaskStatus.CANCELLED,
-                        "project cancelled",
-                    )
-                except InvalidTransition:
-                    continue
-            await session.commit()
+            task_rows = await TaskRepo(session).list_for_project(project_id)
+            task_ids = [task.id for task in task_rows]
+        for task_id in task_ids:
+            try:
+                await self.cancel_task(task_id, requested_by="project cancellation")
+            except (InvalidTransition, TaskNotFoundError):
+                # Terminal/blocked tasks cannot be cancelled and a concurrent
+                # completion may have removed the row; neither blocks the
+                # project-level cancellation.
+                continue
+
         await self._transition_project(
             project_id,
-            [
-                ProjectStatus.LOADED,
-                ProjectStatus.ANALYZING,
-                ProjectStatus.PLANNING,
-                ProjectStatus.AWAITING_APPROVAL,
-                ProjectStatus.EXECUTING,
-                ProjectStatus.PAUSED,
-            ],
+            [status],
             ProjectStatus.CANCELLED,
             "cancelled by user",
         )
@@ -529,4 +622,4 @@ class ProjectService:
             await session.commit()
 
 
-__all__ = ["BaselineRunner", "ProjectService"]
+__all__ = ["BaselineRunner", "ProjectService", "TaskCancellation"]

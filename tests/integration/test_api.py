@@ -549,6 +549,127 @@ async def test_logs_are_tail_limited_redacted_and_traversal_safe(api) -> None:
     assert _error_code(traversal) == "unsafe_log_path"
 
 
+async def test_task_cancel_is_idempotent_and_blocks_dependents(api) -> None:
+    client, container = api
+    spec = load_spec(spec_yaml(name="cancel-task-demo"))
+    _, _, tasks = await seed_project(
+        container.session_factory,
+        spec,
+        keys=["t-a", "t-b"],
+        dependencies={"t-b": ["t-a"]},
+        statuses={"t-a": TaskStatus.RUNNING, "t-b": TaskStatus.READY},
+        project_status="executing",
+    )
+    task_id = tasks["t-a"].id
+    dependent_id = tasks["t-b"].id
+    engine = container.engine
+    assert engine is not None
+    engine.running_task_ids.add(task_id)
+
+    cancelled = await client.post(f"/v1/tasks/{task_id}/cancel", headers=HEADERS)
+    assert cancelled.status_code == 200, cancelled.text
+    body = cancelled.json()
+    assert body["task_id"] == task_id
+    assert body["status"] == "cancelled"
+    assert body["aborted"] is True
+    assert body["blocked_dependents"] == [dependent_id]
+    assert engine.cancelled_tasks == [task_id]
+
+    task = await client.get(f"/v1/tasks/{task_id}", headers=HEADERS)
+    assert task.json()["status"] == "cancelled"
+    dependent = await client.get(f"/v1/tasks/{dependent_id}", headers=HEADERS)
+    assert dependent.json()["status"] == "blocked"
+    assert "cancelled" in (dependent.json()["blocked_reason"] or "")
+
+    again = await client.post(f"/v1/tasks/{task_id}/cancel", headers=HEADERS)
+    assert again.status_code == 200
+    assert again.json()["already_cancelled"] is True
+    assert again.json()["aborted"] is False
+
+    events = await client.get("/v1/projects/proj-1/events", headers=HEADERS)
+    assert any(event["type"] == "task.cancelled" for event in events.json())
+
+
+async def test_task_cancel_rejects_terminal_tasks_and_unknown_ids(api) -> None:
+    client, container = api
+    spec = load_spec(spec_yaml(name="cancel-terminal-demo"))
+    _, _, tasks = await seed_project(
+        container.session_factory,
+        spec,
+        keys=["done", "paused"],
+        statuses={"done": TaskStatus.COMPLETED, "paused": TaskStatus.BLOCKED},
+        project_status="executing",
+    )
+
+    for key in ("done", "paused"):
+        response = await client.post(f"/v1/tasks/{tasks[key].id}/cancel", headers=HEADERS)
+        assert response.status_code == 409, (key, response.text)
+        assert _error_code(response) == "invalid_transition"
+
+    missing = await client.post("/v1/tasks/missing/cancel", headers=HEADERS)
+    assert missing.status_code == 404
+
+
+async def test_project_pause_resume_and_cancel_controls(api) -> None:
+    client, container = api
+    project = await _submit(client, name="controls-demo")
+    project_id = project["id"]
+    plan = (await client.post(f"/v1/projects/{project_id}/plans", headers=HEADERS)).json()
+    approved = await client.post(f"/v1/plans/{plan['id']}/approve", headers=HEADERS)
+    assert approved.status_code == 200
+
+    paused = await client.post(f"/v1/projects/{project_id}/pause", headers=HEADERS)
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+    # Pause is idempotent and keeps the project paused.
+    assert (await client.post(f"/v1/projects/{project_id}/pause", headers=HEADERS)).json()[
+        "status"
+    ] == "paused"
+
+    resumed = await client.post(f"/v1/projects/{project_id}/resume", headers=HEADERS)
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "executing"
+    # Resume of an executing project is a no-op, not an error.
+    assert (await client.post(f"/v1/projects/{project_id}/resume", headers=HEADERS)).json()[
+        "status"
+    ] == "executing"
+
+    cancelled = await client.post(f"/v1/projects/{project_id}/cancel", headers=HEADERS)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert container.engine is not None
+    assert container.engine.cancelled_projects == [project_id]
+    again = await client.post(f"/v1/projects/{project_id}/cancel", headers=HEADERS)
+    assert again.status_code == 200
+    assert again.json()["status"] == "cancelled"
+
+    tasks = await client.get(f"/v1/projects/{project_id}/tasks", headers=HEADERS)
+    assert tasks.json()
+    assert all(task["status"] == "cancelled" for task in tasks.json())
+
+
+async def test_project_cancel_aborts_in_flight_attempts(api) -> None:
+    client, container = api
+    spec = load_spec(spec_yaml(name="cancel-running-demo"))
+    _, _, tasks = await seed_project(
+        container.session_factory,
+        spec,
+        keys=["t-a"],
+        statuses={"t-a": TaskStatus.RUNNING},
+        project_status="executing",
+    )
+    engine = container.engine
+    assert engine is not None
+    engine.running_projects[tasks["t-a"].id] = "proj-1"
+
+    response = await client.post("/v1/projects/proj-1/cancel", headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "cancelled"
+    assert engine.cancelled_projects == ["proj-1"]
+    task = await client.get(f"/v1/tasks/{tasks['t-a'].id}", headers=HEADERS)
+    assert task.json()["status"] == "cancelled"
+
+
 async def test_events_and_sse(api) -> None:
     client, _ = api
     project = await _submit(client, name="events-demo")
