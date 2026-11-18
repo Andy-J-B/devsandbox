@@ -236,6 +236,10 @@ class ApiSettings(BaseModel):
     expensive_rate_limit_per_minute: int = 60
     request_id_header: str = "X-Request-ID"
     run_engine: bool = True
+    # Prometheus exposition at /metrics.  It is unauthenticated like the health
+    # probes and contains only aggregate counters/gauges (never project ids or
+    # secrets), so disabling it is optional hardening for strict deployments.
+    metrics_enabled: bool = True
 
     @field_validator("port")
     @classmethod

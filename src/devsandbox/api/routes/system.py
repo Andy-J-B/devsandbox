@@ -10,10 +10,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
 from ...common.types import ProjectStatus, TaskStatus
-from ...db.models import AttemptModel, TaskModel
+from ...db.models import AttemptModel, ProjectModel, TaskModel
 from ...db.repositories import LeaseRepo, ProjectRepo
 from ...orchestrator.models import EngineStatus
 from ..container import AppContainer
+from ..metrics import HttpMetrics, render_metrics
 from ..schemas import EngineStatusView, HealthResponse, HostResourcesView, SystemStatus
 from ._common import get_container
 
@@ -58,6 +59,68 @@ async def readiness(container: AppContainer | None) -> JSONResponse:
     return JSONResponse(
         status_code=200 if ready else 503,
         content=body.model_dump(mode="json"),
+    )
+
+
+async def metrics_document(container: AppContainer | None, http: HttpMetrics | None = None) -> str:
+    """Collect a scrape document without ever failing the scrape.
+
+    Database or engine hiccups degrade the gauges but the process-level and
+    HTTP families (which are already in memory) are still exposed so alerting
+    can distinguish "component down" from "metrics endpoint down".
+    """
+    uptime = http.uptime_seconds if http is not None else 0.0
+    if container is None:
+        return render_metrics(version="0.1.0", uptime_seconds=uptime, http=http)
+
+    project_counts: dict[str, float] = {}
+    task_counts: dict[str, float] = {}
+    lease_present = 0.0
+    try:
+        async with container.session_factory() as session:
+            project_rows = await session.execute(
+                select(ProjectModel.status, func.count()).group_by(ProjectModel.status)
+            )
+            project_counts = {str(status): float(count) for status, count in project_rows}
+            task_rows = await session.execute(
+                select(TaskModel.status, func.count()).group_by(TaskModel.status)
+            )
+            task_counts = {str(status): float(count) for status, count in task_rows}
+            lease_present = 1.0 if await LeaseRepo(session).get("orchestrator") else 0.0
+    except Exception:
+        project_counts = {}
+        task_counts = {}
+        lease_present = 0.0
+
+    engine: EngineStatus | None = None
+    try:
+        if container.engine is not None:
+            engine = await container.engine.status()
+        else:
+            engine = await _db_engine_status(container)
+    except Exception:
+        engine = None
+
+    gauges: dict[str, float] = {
+        "devsandbox_engine_running_tasks": float(len(engine.running)) if engine else 0.0,
+        "devsandbox_engine_ready_tasks": float(len(engine.ready_queue)) if engine else 0.0,
+        "devsandbox_engine_deferred_tasks": float(len(engine.deferred)) if engine else 0.0,
+        "devsandbox_engine_attempts_total": float(engine.attempts_total) if engine else 0.0,
+        "devsandbox_engine_paused": 1.0 if engine is not None and engine.paused else 0.0,
+        "devsandbox_engine_lease_present": lease_present,
+        "devsandbox_engine_budget_projects": float(len(engine.budget_usage)) if engine else 0.0,
+    }
+    pressure = engine.pressure if engine is not None else "unknown"
+    return render_metrics(
+        version=container.version,
+        uptime_seconds=uptime,
+        http=http,
+        gauges=gauges,
+        grouped={
+            "devsandbox_projects": project_counts,
+            "devsandbox_tasks": task_counts,
+            "devsandbox_pressure": {pressure: 1.0},
+        },
     )
 
 
@@ -158,4 +221,4 @@ async def system_status(request: Request) -> SystemStatus:
     )
 
 
-__all__ = ["readiness", "router"]
+__all__ = ["metrics_document", "readiness", "router"]

@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from tests.api_helpers import (
     TOKEN,
@@ -208,6 +209,59 @@ async def test_health_and_readiness(api) -> None:
     ready = await client.get("/readyz")
     assert ready.status_code == 200
     assert ready.json()["status"] == "ready"
+
+
+async def test_metrics_are_prometheus_text_and_do_not_leak_ids(api) -> None:
+    client, container = api
+
+    # The scrape endpoint itself is unauthenticated, like the health probes.
+    scrape = await client.get("/metrics")
+    assert scrape.status_code == 200
+    assert scrape.headers["content-type"].startswith("text/plain")
+    assert "devsandbox_info" in scrape.text
+    assert "devsandbox_uptime_seconds" in scrape.text
+
+    project = await _submit(client, name="metrics-demo")
+    listed = await client.get("/v1/projects", headers=HEADERS)
+    assert listed.status_code == 200
+
+    scrape = await client.get("/metrics")
+    assert scrape.status_code == 200
+    body = scrape.text
+    # Request counters use route templates, not raw paths, so project ids and
+    # other user data never become labels.
+    assert 'route="/v1/projects"' in body
+    assert 'method="GET"' in body
+    assert 'status="200"' in body
+    assert project["id"] not in body
+    # Persisted state is exported as aggregate status gauges.
+    assert 'devsandbox_projects{status="loaded"} 1' in body
+    assert "devsandbox_engine_running_tasks" in body
+    assert "devsandbox_pressure{status=" in body
+
+    # Aggregate gauges update from the database on each scrape.
+    async with container.session_factory() as session:
+        await session.execute(
+            text("UPDATE projects SET status = 'executing' WHERE id = :id"),
+            {"id": project["id"]},
+        )
+        await session.commit()
+    scrape = await client.get("/metrics")
+    assert 'devsandbox_projects{status="executing"} 1' in scrape.text
+    assert 'devsandbox_projects{status="loaded"} 0' not in scrape.text
+
+
+async def test_metrics_endpoint_can_be_disabled(db_engine, tmp_path) -> None:
+    settings = make_settings(str(tmp_path / "data"))
+    settings = settings.model_copy(
+        update={"api": settings.api.model_copy(update={"metrics_enabled": False})}
+    )
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    app = make_app(make_container(settings=settings, session_factory=maker))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/metrics")
+    assert response.status_code == 404
 
 
 async def test_raw_yaml_submission_and_list(api) -> None:

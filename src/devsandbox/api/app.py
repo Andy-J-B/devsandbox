@@ -19,6 +19,7 @@ from ..common.errors import ConfigError
 from ..common.logging import get_logger
 from .container import AppContainer
 from .errors import error_response, register_error_handlers
+from .metrics import CONTENT_TYPE, HttpMetrics
 from .routes import events, plans, projects, reports, system, tasks
 
 _log = get_logger("devsandbox.api")
@@ -103,6 +104,33 @@ def _version(container: AppContainer | None) -> str:
     return container.version if container is not None else "0.1.0"
 
 
+def _route_template(request: Request) -> str:
+    """Return the full matched route template for bounded metric labels.
+
+    Newer FastAPI versions keep the included router prefix outside
+    ``route.path`` (for example ``/projects/{project_id}`` for the real
+    ``/v1/projects/{project_id}``), so static segments are aligned from the
+    right against the actual path.  Parameter values are never copied into
+    the label.
+    """
+    route = request.scope.get("route")
+    template = getattr(route, "path", None)
+    if not isinstance(template, str) or not template.startswith("/"):
+        return "unmatched"
+    route_parts = [part for part in template.strip("/").split("/") if part]
+    actual_parts = [part for part in request.url.path.strip("/").split("/") if part]
+    if not route_parts or len(route_parts) > len(actual_parts):
+        return template
+    offset = len(actual_parts) - len(route_parts)
+    rendered = actual_parts[:offset]
+    for route_part, actual_part in zip(route_parts, actual_parts[offset:], strict=True):
+        if route_part.startswith("{") and route_part.endswith("}"):
+            rendered.append(route_part)
+        else:
+            rendered.append(actual_part)
+    return "/" + "/".join(rendered)
+
+
 def create_app(
     container: AppContainer | None = None,
     *,
@@ -129,6 +157,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.container = container
+    app.state.metrics = HttpMetrics()
     app.state.rate_limiter = _RateLimiter(
         settings.api.expensive_rate_limit_per_minute if settings is not None else 60
     )
@@ -186,15 +215,26 @@ def create_app(
         request.state.request_id = request_id
         started = time.perf_counter()
 
+        def record(response: Response) -> Response:
+            app.state.metrics.observe(
+                request.method,
+                _route_template(request),
+                response.status_code,
+                time.perf_counter() - started,
+            )
+            return response
+
         if current is not None and request.url.path.startswith("/v1"):
             expected = current.settings.effective_api_tokens
             provided = _bearer_token(request)
             if not expected or provided is None or not _matches_any_token(provided, expected):
-                return error_response(
-                    request,
-                    401,
-                    "unauthorized",
-                    "missing or invalid bearer token",
+                return record(
+                    error_response(
+                        request,
+                        401,
+                        "unauthorized",
+                        "missing or invalid bearer token",
+                    )
                 )
             if _is_expensive(request.method, request.url.path):
                 limiter: _RateLimiter = app.state.rate_limiter
@@ -206,7 +246,7 @@ def create_app(
                         "too many expensive requests; retry later",
                     )
                     limited.headers["Retry-After"] = "60"
-                    return limited
+                    return record(limited)
 
         response = await call_next(request)
         response.headers[header] = request_id
@@ -219,7 +259,7 @@ def create_app(
             status_code=response.status_code,
             duration_ms=elapsed_ms,
         )
-        return response
+        return record(response)
 
     @app.get("/healthz", include_in_schema=False)
     async def _healthz() -> JSONResponse:
@@ -228,6 +268,15 @@ def create_app(
     @app.get("/readyz", include_in_schema=False)
     async def _readyz() -> JSONResponse:
         return await system.readiness(app.state.container)
+
+    if settings is None or settings.api.metrics_enabled:
+
+        @app.get("/metrics", include_in_schema=False)
+        async def _metrics() -> Response:
+            return Response(
+                content=await system.metrics_document(app.state.container, app.state.metrics),
+                media_type=CONTENT_TYPE,
+            )
 
     return app
 

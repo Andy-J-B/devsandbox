@@ -38,7 +38,9 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   `DEVSANDBOX_API_TOKEN` alias), `additional_tokens` (JSON list of old tokens
   kept valid during a rotation window; empty and duplicate entries are
   ignored), `max_spec_bytes`, `max_log_bytes`, `max_log_lines`,
-  `expensive_rate_limit_per_minute`, `request_id_header`, `run_engine`.
+  `expensive_rate_limit_per_minute`, `request_id_header`, `run_engine`,
+  `metrics_enabled` (Prometheus `/metrics`; default true, aggregate-only and
+  unauthenticated like the probes).
   Rotation and TLS/ingress guidance: [deployment.md](deployment.md#6-api-exposure-tls-and-token-rotation).
   There are deliberately no uvicorn certificate/key settings: TLS terminates at
   the shipped reverse-proxy example or your ingress controller.
