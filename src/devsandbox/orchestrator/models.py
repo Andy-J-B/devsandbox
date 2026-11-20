@@ -107,6 +107,13 @@ class OrchestratorConfig(BaseModel):
             values["max_replans"] = getattr(
                 planner, "max_replans", cls.model_fields["max_replans"].default
             )
+        storage = getattr(settings, "storage", None)
+        if storage is not None:
+            values["workspace_retention_hours"] = getattr(
+                storage,
+                "workspace_retention_hours",
+                cls.model_fields["workspace_retention_hours"].default,
+            )
         values.update(overrides)
         return cls.model_validate(values)
 
@@ -170,6 +177,11 @@ class RecoveryReport(BaseModel):
     actions: list[RecoveryAction] = Field(default_factory=list)
     containers_destroyed: list[str] = Field(default_factory=list)
     workspaces_removed: list[str] = Field(default_factory=list)
+    # Retention GC paths include logs and validation scratch in addition to
+    # workspaces; ``workspaces_removed`` remains for older consumers.
+    storage_removed: list[str] = Field(default_factory=list)
+    bytes_reclaimed: int = 0
+    storage_errors: list[str] = Field(default_factory=list)
     started_at: datetime | None = None
     finished_at: datetime | None = None
 

@@ -122,6 +122,8 @@ Each SSE frame is `id: <event_id>`, `event: <type>`, `data: <json>`.
 | --- | --- | --- |
 | `GET` | `/projects/{id}/report` | `?format=json|markdown|html` (default JSON). Read-only and deterministic for a given DB state; see [reporting.md](reporting.md). |
 | `GET` | `/system/status` | Engine state, host resources/pressure, budget usage, project count, and API info. |
+| `GET` | `/system/storage` | Data-root usage by category plus filesystem total/free/used bytes. |
+| `POST` | `/system/gc` | Run retention GC; `?dry_run=true` previews removals. Emits `STORAGE_GC_COMPLETED`. |
 | `GET` | `/healthz` | Liveness; always `200` while the process is up. |
 | `GET` | `/readyz` | Readiness (`200`/`503`) with `database` and `docker` checks. |
 | `GET` | `/metrics` | Prometheus exposition of HTTP/engine/project/task gauges (aggregate, id-free). |

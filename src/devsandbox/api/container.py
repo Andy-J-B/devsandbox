@@ -23,6 +23,7 @@ from ..orchestrator.project_service import ProjectService
 from ..planner.service import PlanService
 from ..reporting.models import ProjectReport
 from ..scheduler.interfaces import ResourceMonitor
+from ..storage.janitor import StorageJanitor
 
 PlanServiceFactory = Callable[[AsyncSession], PlanService]
 ReportBuilder = Callable[[str], Awaitable[ProjectReport]]
@@ -50,6 +51,7 @@ class AppContainer:
     engine: EngineController | None = None
     monitor: ResourceMonitor | None = None
     git: GitManager | None = None
+    storage: StorageJanitor | None = None
     docker_ping: Callable[[], bool] | None = None
     report_builder: ReportBuilder | None = None
     version: str = "0.1.0"

@@ -35,6 +35,7 @@ _EXPENSIVE_SUFFIXES = {
     "cancel",
     "mode",
     "retry",
+    "gc",
 }
 
 

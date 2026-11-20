@@ -475,6 +475,57 @@
         "title": "AttemptSummary",
         "type": "object"
       },
+      "CategoryUsage": {
+        "description": "Byte/file accounting for one data-root category.",
+        "properties": {
+          "bytes": {
+            "default": 0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "directories": {
+            "default": 0,
+            "title": "Directories",
+            "type": "integer"
+          },
+          "entries": {
+            "default": 0,
+            "title": "Entries",
+            "type": "integer"
+          },
+          "files": {
+            "default": 0,
+            "title": "Files",
+            "type": "integer"
+          },
+          "newest_mtime": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newest Mtime"
+          },
+          "oldest_mtime": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Mtime"
+          }
+        },
+        "title": "CategoryUsage",
+        "type": "object"
+      },
       "CheckSpec": {
         "description": "A validation check executed inside a sandbox.\n\n``run`` is either a shell command string (executed with ``/bin/sh -lc``)\nor an argv list.  The remaining fields are optional refinements used by the\nvalidation runner (plan 09).  Checks are always executed in a *fresh*\nvalidation container; nothing here can cause the agent's container or\nenvironment to be reused.",
         "properties": {
@@ -593,6 +644,53 @@
           "run"
         ],
         "title": "CheckSpec",
+        "type": "object"
+      },
+      "DiskUsageReport": {
+        "description": "Point-in-time disk usage report for the DevSandbox data root.",
+        "properties": {
+          "categories": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CategoryUsage"
+            },
+            "title": "Categories",
+            "type": "object"
+          },
+          "collected_at": {
+            "format": "date-time",
+            "title": "Collected At",
+            "type": "string"
+          },
+          "data_root": {
+            "title": "Data Root",
+            "type": "string"
+          },
+          "filesystem_free_bytes": {
+            "default": 0,
+            "title": "Filesystem Free Bytes",
+            "type": "integer"
+          },
+          "filesystem_total_bytes": {
+            "default": 0,
+            "title": "Filesystem Total Bytes",
+            "type": "integer"
+          },
+          "filesystem_used_bytes": {
+            "default": 0,
+            "title": "Filesystem Used Bytes",
+            "type": "integer"
+          },
+          "total_bytes": {
+            "default": 0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data_root",
+          "collected_at"
+        ],
+        "title": "DiskUsageReport",
         "type": "object"
       },
       "EngineStatusView": {
@@ -745,6 +843,62 @@
           "at"
         ],
         "title": "EventRecord",
+        "type": "object"
+      },
+      "GarbageCollectionReport": {
+        "description": "Outcome of one garbage-collection pass.",
+        "properties": {
+          "bytes_reclaimed": {
+            "default": 0,
+            "title": "Bytes Reclaimed",
+            "type": "integer"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "removed_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed Paths",
+            "type": "array"
+          },
+          "skipped_active": {
+            "default": 0,
+            "title": "Skipped Active",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "started_at"
+        ],
+        "title": "GarbageCollectionReport",
         "type": "object"
       },
       "GraphIssue": {
@@ -3826,6 +3980,50 @@
         ]
       }
     },
+    "/v1/system/gc": {
+      "post": {
+        "description": "Run the retention garbage collector (``?dry_run=true`` to preview).",
+        "operationId": "system_gc_v1_system_gc_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GarbageCollectionReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "System Gc",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/v1/system/status": {
       "get": {
         "operationId": "system_status_v1_system_status_get",
@@ -3842,6 +4040,28 @@
           }
         },
         "summary": "System Status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/system/storage": {
+      "get": {
+        "description": "Report data-root usage by category and filesystem capacity.",
+        "operationId": "system_storage_v1_system_storage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiskUsageReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "System Storage",
         "tags": [
           "system"
         ]

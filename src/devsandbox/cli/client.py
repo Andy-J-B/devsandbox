@@ -119,6 +119,16 @@ class ApiClient:
     async def system_status(self) -> Any:
         return await self._request("GET", "/v1/system/status")
 
+    async def storage(self) -> Any:
+        return await self._request("GET", "/v1/system/storage")
+
+    async def gc(self, *, dry_run: bool = False) -> Any:
+        return await self._request(
+            "POST",
+            "/v1/system/gc",
+            params={"dry_run": "true" if dry_run else "false"},
+        )
+
     # ---------------------------------------------------------------- projects
     async def list_projects(self) -> list[dict[str, Any]]:
         value = await self._request("GET", "/v1/projects")

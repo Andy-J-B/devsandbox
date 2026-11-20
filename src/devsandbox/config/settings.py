@@ -212,6 +212,48 @@ class SecretRef(BaseModel):
     path: str | None = None
 
 
+class StorageSettings(BaseModel):
+    """On-disk retention and garbage-collection policy.
+
+    These values are operator policy, never project spec input.  The janitor
+    only deletes workspaces, agent logs, and validation scratch trees; the
+    canonical Git mirrors, integration scratch, and secrets are report-only.
+    """
+
+    enabled: bool = True
+    # How often the running engine performs a collection pass.  A value of 0
+    # disables periodic collection but still allows manual ``devsandbox gc``.
+    gc_interval_seconds: int = 3600
+    # Age is measured from the newest file modification time in the tree, so
+    # recent agent activity keeps a workspace/log alive even if it was created
+    # long ago.
+    workspace_retention_hours: float = 72.0
+    log_retention_hours: float = 168.0
+    validation_retention_hours: float = 24.0
+    # Keep the most recent N attempt log directories even when they are older
+    # than the retention window.  Useful when an operator wants a short audit
+    # tail without keeping every historical log.
+    keep_latest_log_directories: int = 20
+
+    @field_validator("gc_interval_seconds", "keep_latest_log_directories")
+    @classmethod
+    def _non_negative_int(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("storage limits must be >= 0")
+        return value
+
+    @field_validator(
+        "workspace_retention_hours",
+        "log_retention_hours",
+        "validation_retention_hours",
+    )
+    @classmethod
+    def _retention_non_negative(cls, value: float) -> float:
+        if value < 0.0:
+            raise ValueError("retention hours must be >= 0")
+        return value
+
+
 class ApiSettings(BaseModel):
     """HTTP API configuration (plan 10).
 
@@ -353,6 +395,7 @@ class DevSandboxSettings(BaseSettings):
     agent: AgentConfig = AgentConfig()
     planner: PlannerConfig = PlannerConfig()
     validation: ValidationSettings = ValidationSettings()
+    storage: StorageSettings = StorageSettings()
     api: ApiSettings = ApiSettings()
     # Top-level alias so ``DEVSANDBOX_API_TOKEN`` works as documented.  The
     # nested ``DEVSANDBOX_API__TOKEN`` form is also supported.

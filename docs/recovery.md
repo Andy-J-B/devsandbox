@@ -88,8 +88,11 @@ After the task pass, recovery:
 - **reaps containers** returned by `sandbox.list_managed()` that no active
   attempt owns (`labels["devsandbox.attempt"]` is unknown or the container is a
   stale `ds-<attempt>`), destroying them and reporting their ids;
-- **removes workspaces** older than `workspace_retention_hours` (default 72 h)
-  when they are not owned by an active attempt;
+- **runs retention GC** after reaping containers: expired workspaces, agent
+  logs, and validation scratch trees are removed according to the
+  `storage.*` policy (see [storage.md](storage.md)). The older
+  `workspace_retention_hours` fallback remains when recovery is constructed
+  without a `StorageJanitor` (for example focused unit tests);
 - **abandons active attempts** whose task is no longer active, marking them
   `abandoned` and emitting `attempt.abandoned`.
 

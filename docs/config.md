@@ -70,6 +70,15 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   - The sandbox has no egress by default. Reaching a host-local model also
     requires `DEVSANDBOX_SECURITY__ALLOW_NETWORK_DEFAULT=true`; project specs
     cannot widen that policy.
+- `storage`: data-root retention and GC policy (see [storage.md](storage.md))
+  - `enabled` (default `true`), `gc_interval_seconds` (default `3600`; `0`
+    disables periodic collection but keeps manual `devsandbox gc`)
+  - `workspace_retention_hours` (default `72`), `log_retention_hours`
+    (default `168`), `validation_retention_hours` (default `24`)
+  - `keep_latest_log_directories` (default `20`) keeps the newest log
+    directories even when they exceed the age window
+  - Only workspaces, agent logs, and validation scratch are collectable;
+    canonical repo mirrors, integration scratch, and secrets are report-only.
 - `validation`: independent validation policy (plan 09)
   - `image` (default `devsandbox/validator:latest`), `max_output_bytes`
   - `max_changed_files`, `max_diff_lines`

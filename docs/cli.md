@@ -36,6 +36,8 @@ request logs (structured logging writes to stderr).
 | `devsandbox logs TASK [--attempt N] [--stream agent\|stdout\|stderr] [--tail N]` | Redacted logs (newest attempt by default). |
 | `devsandbox events PROJECT [--follow] [--since ID] [--limit N]` | Audit trail; `--follow` streams SSE. |
 | `devsandbox report PROJECT [--out FILE] [--format markdown\|json\|html]` | Write/print the deterministic report. `--json` forces JSON. |
+| `devsandbox storage` | Data-root disk usage by category (workspaces, logs, validation, repos, …) and filesystem free space. |
+| `devsandbox gc [--dry-run]` | Expire stale workspaces, logs, and validation scratch using `storage.*` retention policy. |
 | `devsandbox validate-spec SPEC` | Offline validation via the plan-01 loader; no DB/Docker needed. |
 | `devsandbox retry TASK [--reset-budget]` | Re-open a `BLOCKED` task (audited). `FAILED` tasks require a replan. |
 | `devsandbox cancel-task TASK` | Cancel one queued/running task and abort its in-flight attempt. |

@@ -64,6 +64,22 @@ def _emit_json(value: Any) -> None:
     typer.echo(json.dumps(value, indent=2, sort_keys=True, default=str))
 
 
+def _format_bytes(value: Any) -> str:
+    """Render a byte count with binary units for human-readable tables."""
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    index = 0
+    while size >= 1024.0 and index < len(units) - 1:
+        size /= 1024.0
+        index += 1
+    if index == 0:
+        return f"{int(size)} {units[index]}"
+    return f"{size:.1f} {units[index]}"
+
+
 def _truncate(value: Any, width: int = 60) -> str:
     text = "" if value is None else str(value)
     text = " ".join(text.split())
@@ -517,6 +533,80 @@ def status(
                 console.print(f"status={last_status}")
         _exit_if_failed(last_status)
     _exit_if_failed(result.get("status"))
+
+
+@app.command()
+def storage(ctx: typer.Context) -> None:
+    """Report data-root disk usage by category."""
+    state = _state(ctx)
+
+    async def _run() -> Any:
+        async with _client(state) as client:
+            return await client.storage()
+
+    try:
+        result = asyncio.run(_run())
+    except CliError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+
+    if state.json_output:
+        _emit_json(result)
+        return
+    categories = result.get("categories") or {}
+    rows = [
+        [
+            name,
+            _format_bytes(usage.get("bytes", 0)),
+            usage.get("files", 0),
+            usage.get("directories", 0),
+            usage.get("newest_mtime") or "—",
+        ]
+        for name, usage in sorted(categories.items())
+        if isinstance(usage, dict)
+    ]
+    console.print(
+        f"[bold]Data root[/bold] {result.get('data_root')}  "
+        f"total={_format_bytes(result.get('total_bytes', 0))}  "
+        f"free={_format_bytes(result.get('filesystem_free_bytes', 0))} / "
+        f"{_format_bytes(result.get('filesystem_total_bytes', 0))}"
+    )
+    console.print(
+        _table("Storage by category", ["Category", "Size", "Files", "Dirs", "Newest"], rows)
+    )
+
+
+@app.command()
+def gc(
+    ctx: typer.Context,
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview removals only."),
+) -> None:
+    """Expire stale workspaces, logs, and validation scratch trees."""
+    state = _state(ctx)
+
+    async def _run() -> Any:
+        async with _client(state) as client:
+            return await client.gc(dry_run=dry_run)
+
+    try:
+        result = asyncio.run(_run())
+    except CliError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+
+    if state.json_output:
+        _emit_json(result)
+        return
+    mode = "would remove" if result.get("dry_run") else "removed"
+    console.print(
+        f"[bold]Storage GC[/bold] {mode} {len(result.get('removed_paths') or [])} path(s), "
+        f"reclaimed={_format_bytes(result.get('bytes_reclaimed', 0))}, "
+        f"skipped active={result.get('skipped_active', 0)}"
+    )
+    for path in result.get("removed_paths") or []:
+        console.print(f"- {path}")
+    for error in result.get("errors") or []:
+        console.print(f"[red]- {error}[/red]")
 
 
 @app.command()

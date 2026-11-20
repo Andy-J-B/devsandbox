@@ -37,6 +37,7 @@ from ..sandbox.manager import DockerSandboxManager
 from ..scheduler.config import SchedulerConfig
 from ..scheduler.monitor import PsutilResourceMonitor
 from ..scheduler.scheduler import DeterministicScheduler
+from ..storage.janitor import StorageJanitor
 from ..validation.config import ValidationConfig
 from ..validation.validator import ValidatorImpl
 from .container import AppContainer
@@ -153,6 +154,11 @@ def build_container(
     agent = _make_agent(sandbox, resolved)
     scheduler = DeterministicScheduler(SchedulerConfig.from_settings(resolved))
     monitor = PsutilResourceMonitor(SchedulerConfig.from_settings(resolved), data_root=data_root)
+    storage = StorageJanitor(
+        data_root,
+        settings=resolved.storage,
+        session_factory=session_factory,
+    )
     projects = ProjectService(
         session_factory,
         git=git,
@@ -167,6 +173,7 @@ def build_container(
         git=git,
         sandbox=sandbox,
         config=OrchestratorConfig.from_settings(resolved),
+        storage=storage,
     )
 
     def plan_services(session: AsyncSession) -> PlanService:
@@ -200,6 +207,7 @@ def build_container(
         scheduler_config=SchedulerConfig.from_settings(resolved),
         project_service=projects,
         recovery=recovery,
+        storage=storage,
         replanner=replanner,
     )
 
@@ -211,6 +219,7 @@ def build_container(
         engine=engine,
         monitor=monitor,
         git=git,
+        storage=storage,
         docker_ping=_docker_ping,
         extra={"sql_engine": sql_engine, "sandbox": sandbox, "agent": agent},
     )

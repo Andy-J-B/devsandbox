@@ -12,7 +12,10 @@ from sqlalchemy import func, select
 from ...common.types import ProjectStatus, TaskStatus
 from ...db.models import AttemptModel, ProjectModel, TaskModel
 from ...db.repositories import LeaseRepo, ProjectRepo
+from ...orchestrator import events
 from ...orchestrator.models import EngineStatus
+from ...storage.janitor import StorageJanitor
+from ...storage.models import DiskUsageReport, GarbageCollectionReport
 from ..container import AppContainer
 from ..metrics import HttpMetrics, render_metrics
 from ..schemas import EngineStatusView, HealthResponse, HostResourcesView, SystemStatus
@@ -124,6 +127,18 @@ async def metrics_document(container: AppContainer | None, http: HttpMetrics | N
     )
 
 
+def storage_janitor(container: AppContainer) -> StorageJanitor:
+    """Return the injected janitor or build one from container settings."""
+    if container.storage is not None:
+        return container.storage
+    return StorageJanitor(
+        container.settings.data_root,
+        settings=container.settings.storage,
+        session_factory=container.session_factory,
+        clock=container.clock,
+    )
+
+
 async def _db_engine_status(container: AppContainer) -> EngineStatus:
     async with container.session_factory() as session:
         projects = await ProjectRepo(session).list_by_status(
@@ -159,6 +174,35 @@ async def _db_engine_status(container: AppContainer) -> EngineStatus:
         paused=any(ProjectStatus(project.status) is ProjectStatus.PAUSED for project in projects),
         lease_holder=lease.holder if lease is not None else None,
     )
+
+
+@router.get("/system/storage", response_model=DiskUsageReport)
+async def system_storage(request: Request) -> DiskUsageReport:
+    """Report data-root usage by category and filesystem capacity."""
+    container = get_container(request)
+    return await storage_janitor(container).disk_usage()
+
+
+@router.post("/system/gc", response_model=GarbageCollectionReport)
+async def system_gc(request: Request, dry_run: bool = False) -> GarbageCollectionReport:
+    """Run the retention garbage collector (``?dry_run=true`` to preview)."""
+    container = get_container(request)
+    report = await storage_janitor(container).collect(dry_run=dry_run)
+    async with container.session_factory() as session:
+        await events.emit_event(
+            session,
+            project_id="system",
+            event_type=events.STORAGE_GC_COMPLETED,
+            payload={
+                "source": "api",
+                "dry_run": report.dry_run,
+                "removed": report.removed_paths,
+                "bytes_reclaimed": report.bytes_reclaimed,
+                "errors": report.errors,
+            },
+        )
+        await session.commit()
+    return report
 
 
 @router.get("/system/status", response_model=SystemStatus)
@@ -221,4 +265,4 @@ async def system_status(request: Request) -> SystemStatus:
     )
 
 
-__all__ = ["metrics_document", "readiness", "router"]
+__all__ = ["metrics_document", "readiness", "router", "storage_janitor"]

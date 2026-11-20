@@ -31,6 +31,7 @@ from ..db.models import AttemptModel, ProjectModel, TaskModel
 from ..db.repositories import AttemptRepo, IntegrationRepo, ProjectRepo, TaskRepo
 from ..gitmgr.interfaces import GitManager, Workspace
 from ..sandbox.interfaces import ManagedContainer, SandboxManager
+from ..storage.janitor import StorageJanitor
 from . import events
 from .models import (
     OrchestratorConfig,
@@ -64,12 +65,14 @@ class RecoveryService:
         git: GitManager,
         sandbox: SandboxManager | None = None,
         config: OrchestratorConfig | None = None,
+        storage: StorageJanitor | None = None,
         clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._session_factory = session_factory
         self.git = git
         self.sandbox = sandbox
         self.config = config or OrchestratorConfig()
+        self.storage = storage
         self._clock = clock
 
     # ------------------------------------------------------------------ entry
@@ -120,7 +123,16 @@ class RecoveryService:
             await session.commit()
 
         report.containers_destroyed.extend(await self.reap_orphans())
-        report.workspaces_removed.extend(await self._clean_orphan_workspaces())
+        if self.storage is not None:
+            collection = await self.storage.collect()
+            report.storage_removed.extend(collection.removed_paths)
+            report.workspaces_removed.extend(
+                path for path in collection.removed_paths if "/workspaces/" in path
+            )
+            report.bytes_reclaimed = collection.bytes_reclaimed
+            report.storage_errors.extend(collection.errors)
+        else:
+            report.workspaces_removed.extend(await self._clean_orphan_workspaces())
         report.finished_at = self._clock()
         async with self._session_factory() as session:
             await events.emit_event(
@@ -140,6 +152,9 @@ class RecoveryService:
                     "summary": report.summary,
                     "containers_destroyed": report.containers_destroyed,
                     "workspaces_removed": report.workspaces_removed,
+                    "storage_removed": report.storage_removed,
+                    "bytes_reclaimed": report.bytes_reclaimed,
+                    "storage_errors": report.storage_errors,
                 },
             )
             await session.commit()

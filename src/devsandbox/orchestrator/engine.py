@@ -68,6 +68,7 @@ from ..scheduler.interfaces import (
     SchedulingSnapshot,
 )
 from ..scheduler.models import DecisionAction, DeferReason, ModelBudgetState
+from ..storage.janitor import StorageJanitor
 from ..validation.interfaces import ValidationReport, Validator
 from . import events
 from .failures import (
@@ -230,6 +231,7 @@ class OrchestratorEngine:
         replanner: Replanner | None = None,
         project_service: Any | None = None,
         recovery: Any | None = None,
+        storage: StorageJanitor | None = None,
         faults: FaultInjector | None = None,
         lease_holder: str | None = None,
         clock: Callable[[], datetime] = utcnow,
@@ -260,6 +262,8 @@ class OrchestratorEngine:
         self.replanner = replanner
         self.project_service = project_service
         self.recovery = recovery
+        self.storage = storage
+        self._last_storage_gc_at: datetime | None = None
         self.faults = faults or FaultInjector()
         self.lease_holder = lease_holder or (f"{socket.gethostname()}:{uuid.uuid4().hex[:12]}")
         self._clock = clock
@@ -409,7 +413,35 @@ class OrchestratorEngine:
         await self._refresh_lease()
         launched = await self._round()
         await self._finalize_projects()
+        await self._maybe_collect_storage()
         return launched
+
+    async def _maybe_collect_storage(self) -> None:
+        """Run the retention janitor on its configured cadence."""
+        if self.storage is None or not self.settings.storage.enabled:
+            return
+        interval = self.settings.storage.gc_interval_seconds
+        if interval <= 0:
+            return
+        now = self._clock()
+        if self._last_storage_gc_at is None:
+            # Recovery already collected at startup; establish the cadence
+            # baseline instead of scanning twice in the first tick.
+            self._last_storage_gc_at = now
+            return
+        if (now - self._last_storage_gc_at).total_seconds() < interval:
+            return
+        self._last_storage_gc_at = now
+        with contextlib.suppress(Exception):
+            report = await self.storage.collect()
+            await self._emit_engine_event(
+                events.STORAGE_GC_COMPLETED,
+                payload={
+                    "removed": report.removed_paths,
+                    "bytes_reclaimed": report.bytes_reclaimed,
+                    "errors": report.errors,
+                },
+            )
 
     async def _with_db_reconnect(
         self,
@@ -2081,13 +2113,18 @@ class OrchestratorEngine:
             self._running[action.task_id] = runner
             runner.add_done_callback(lambda _: self._wake.set())
 
-    async def _emit_engine_event(self, event_type: str) -> None:
+    async def _emit_engine_event(
+        self, event_type: str, *, payload: dict[str, Any] | None = None
+    ) -> None:
         async with self._session_factory() as session:
+            event_payload = {"holder": self.lease_holder, "running": list(self._running)}
+            if payload:
+                event_payload.update(payload)
             await events.emit_event(
                 session,
                 project_id="system",
                 event_type=event_type,
-                payload={"holder": self.lease_holder, "running": list(self._running)},
+                payload=event_payload,
             )
             await session.commit()
 

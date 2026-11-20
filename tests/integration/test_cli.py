@@ -84,6 +84,8 @@ def test_help_lists_commands(cli_settings) -> None:
         "cancel-task",
         "pause-task",
         "resume-task",
+        "storage",
+        "gc",
     ):
         assert command in result.stdout
 
@@ -256,3 +258,49 @@ def test_pause_resume_task_commands(cli_settings, cli_db) -> None:
     resumed = _invoke("--local", "--json", "resume-task", task_id)
     assert resumed.exit_code == 0, resumed.stdout + resumed.stderr
     assert _json(resumed)["paused"] is False
+
+
+def test_storage_report_and_gc_commands(cli_settings) -> None:
+    import os
+    import time
+
+    from devsandbox.config.settings import StorageSettings
+
+    cli_settings.storage = StorageSettings(
+        workspace_retention_hours=1,
+        log_retention_hours=1,
+        validation_retention_hours=1,
+        keep_latest_log_directories=0,
+    )
+    data_root = Path(cli_settings.data_root)
+    old_log = data_root / "logs" / "old-attempt" / "stdout.log"
+    old_log.parent.mkdir(parents=True, exist_ok=True)
+    old_log.write_text("old output\n", encoding="utf-8")
+    old_workspace = data_root / "workspaces" / "p1" / "old-attempt" / "file.txt"
+    old_workspace.parent.mkdir(parents=True, exist_ok=True)
+    old_workspace.write_text("old\n", encoding="utf-8")
+    stale = time.time() - 10 * 3600
+    for path in (old_log, old_log.parent, old_workspace, old_workspace.parent):
+        os.utime(path, (stale, stale))
+
+    usage = _invoke("--local", "--json", "storage")
+    assert usage.exit_code == 0, usage.stdout + usage.stderr
+    usage_payload = _json(usage)
+    assert usage_payload["data_root"] == str(data_root)
+    assert usage_payload["categories"]["logs"]["files"] == 1
+    assert usage_payload["categories"]["workspaces"]["files"] == 1
+
+    preview = _invoke("--local", "--json", "gc", "--dry-run")
+    assert preview.exit_code == 0, preview.stdout + preview.stderr
+    preview_payload = _json(preview)
+    assert preview_payload["dry_run"] is True
+    assert len(preview_payload["removed_paths"]) == 2
+    assert old_log.exists()
+
+    collected = _invoke("--local", "--json", "gc")
+    assert collected.exit_code == 0, collected.stdout + collected.stderr
+    collected_payload = _json(collected)
+    assert collected_payload["dry_run"] is False
+    assert len(collected_payload["removed_paths"]) == 2
+    assert not old_log.parent.exists()
+    assert not old_workspace.parent.exists()
