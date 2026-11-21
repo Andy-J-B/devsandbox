@@ -102,3 +102,7 @@ class LeaseLostError(OrchestratorError):
 
 class RecoveryError(OrchestratorError):
     """Raised when crash recovery cannot converge to a safe state."""
+
+
+class DatabaseBackupError(DevSandboxError):
+    """Raised when database backup/restore tooling fails."""

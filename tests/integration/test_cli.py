@@ -90,6 +90,24 @@ def test_help_lists_commands(cli_settings) -> None:
         assert command in result.stdout
 
 
+def test_db_commands_are_documented_and_restore_requires_confirmation(
+    cli_settings, tmp_path
+) -> None:
+    help_result = _invoke("db", "--help")
+    assert help_result.exit_code == 0
+    for command in ("backup", "restore", "upgrade", "downgrade"):
+        assert command in help_result.stdout
+
+    refused = _invoke(
+        "db",
+        "restore",
+        "--from",
+        str(tmp_path / "missing.dump"),
+    )
+    assert refused.exit_code == 2
+    assert "--yes" in refused.stdout or "--yes" in refused.stderr
+
+
 def test_validate_spec_offline(cli_settings, tmp_path) -> None:
     spec = _write_spec(tmp_path)
     result = _invoke("--json", "validate-spec", str(spec))

@@ -21,6 +21,7 @@ from rich.table import Table
 
 from ..common.errors import DevSandboxError, SpecError
 from ..config.settings import get_settings
+from ..db.backup import backup_database, restore_database, sanitize_database_url
 from ..spec.models import load_spec
 from .client import ApiClient, CliError, open_client
 
@@ -31,6 +32,12 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+db_app = typer.Typer(
+    name="db",
+    help="Offline database maintenance: backup, restore, and migrations.",
+    no_args_is_help=True,
+)
+app.add_typer(db_app, name="db")
 
 
 @dataclass
@@ -169,9 +176,8 @@ def _exit_if_failed(status: str | None) -> None:
         raise typer.Exit(code=1)
 
 
-def _alembic_upgrade(database_url: str) -> None:
-    """Apply the packaged migrations to ``database_url``."""
-    from alembic import command
+def _alembic_config(database_url: str) -> Any:
+    """Build an Alembic config that resolves the packaged migrations."""
     from alembic.config import Config
 
     # Resolve migrations from the installed package (site-packages in a wheel,
@@ -180,7 +186,25 @@ def _alembic_upgrade(database_url: str) -> None:
     config = Config()
     config.set_main_option("script_location", str(package_root / "db" / "migrations"))
     config.set_main_option("sqlalchemy.url", database_url)
-    command.upgrade(config, "head")
+    return config
+
+
+def _alembic_upgrade(database_url: str) -> None:
+    """Apply the packaged migrations to ``database_url``."""
+    from alembic import command
+
+    command.upgrade(_alembic_config(database_url), "head")
+
+
+def _alembic_move(database_url: str, revision: str, *, upgrade: bool) -> None:
+    """Upgrade or downgrade to ``revision`` using the packaged migrations."""
+    from alembic import command
+
+    config = _alembic_config(database_url)
+    if upgrade:
+        command.upgrade(config, revision)
+    else:
+        command.downgrade(config, revision)
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +247,104 @@ def root(
     )
 
 
+@db_app.command("backup")
+def db_backup(
+    ctx: typer.Context,
+    out: Path = typer.Option(..., "--out", "-o", help="Destination custom-format dump."),
+    overwrite: bool = typer.Option(False, "--overwrite", help="Replace an existing dump."),
+) -> None:
+    """Write a PostgreSQL custom-format dump plus a manifest sidecar."""
+    state = _state(ctx)
+    settings = get_settings()
+    try:
+        result = asyncio.run(backup_database(settings.database_url, out, overwrite=overwrite))
+    except DevSandboxError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+    if state.json_output:
+        _emit_json(result.model_dump(mode="json"))
+        return
+    manifest = result.manifest
+    console.print(
+        f"[bold]Backup written[/bold] {result.path}\n"
+        f"bytes={_format_bytes(manifest.bytes)}  sha256={manifest.sha256}\n"
+        f"database={manifest.database}  alembic_revision={manifest.alembic_revision or 'unknown'}"
+    )
+
+
+@db_app.command("restore")
+def db_restore(
+    ctx: typer.Context,
+    source: Path = typer.Option(..., "--from", help="Custom-format dump to restore."),
+    yes: bool = typer.Option(False, "--yes", help="Confirm the destructive restore."),
+    clean: bool = typer.Option(True, "--clean/--no-clean", help="Drop objects before restore."),
+    force: bool = typer.Option(False, "--force", help="Restore even if the checksum mismatches."),
+) -> None:
+    """Restore a dump into the configured database (stop the server first)."""
+    state = _state(ctx)
+    if not yes:
+        typer.secho("refusing to restore without --yes", fg="red", err=True)
+        raise typer.Exit(code=2)
+    settings = get_settings()
+    try:
+        result = asyncio.run(
+            restore_database(
+                settings.database_url,
+                source,
+                clean=clean,
+                force=force,
+            )
+        )
+    except DevSandboxError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+    if state.json_output:
+        _emit_json(result.model_dump(mode="json"))
+        return
+    console.print(
+        f"[bold]Restore complete[/bold] {result.source} → database={result.database} "
+        f"clean={result.cleaned}"
+    )
+
+
+@db_app.command("upgrade")
+def db_upgrade(
+    ctx: typer.Context,
+    revision: str = typer.Argument("head", help="Target Alembic revision."),
+) -> None:
+    """Apply migrations up to ``revision`` (default: head)."""
+    state = _state(ctx)
+    settings = get_settings()
+    try:
+        _alembic_move(settings.database_url, revision, upgrade=True)
+    except Exception as exc:
+        typer.secho(f"database upgrade failed: {exc}", fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+    if state.json_output:
+        _emit_json({"revision": revision, "direction": "upgrade"})
+    else:
+        console.print(f"[bold]Database upgraded[/bold] to {revision}")
+
+
+@db_app.command("downgrade")
+def db_downgrade(
+    ctx: typer.Context,
+    revision: str = typer.Argument("-1", help="Target Alembic revision (default: one step)."),
+) -> None:
+    """Roll migrations back to ``revision``."""
+    state = _state(ctx)
+    settings = get_settings()
+    try:
+        _alembic_move(settings.database_url, revision, upgrade=False)
+    except Exception as exc:
+        typer.secho(f"database downgrade failed: {exc}", fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+    if state.json_output:
+        _emit_json({"revision": revision, "direction": "downgrade"})
+    else:
+        console.print(f"[bold]Database downgraded[/bold] to {revision}")
+
+
 @app.command("init-db")
 def init_db(ctx: typer.Context) -> None:
     """Create/upgrade the database schema using Alembic."""
@@ -232,7 +354,7 @@ def init_db(ctx: typer.Context) -> None:
     except Exception as exc:  # alembic raises its own exception types
         typer.secho(f"database migration failed: {exc}", fg="red", err=True)
         raise typer.Exit(code=2) from exc
-    typer.echo(f"database is up to date: {settings.database_url}")
+    typer.echo(f"database is up to date: {sanitize_database_url(settings.database_url)}")
 
 
 @app.command()
