@@ -19,6 +19,9 @@ _NGINX = _PROXY / "nginx.conf"
 _OVERRIDE = _PROXY / "compose.override.yaml"
 _BASE_COMPOSE = _ROOT / "docker" / "compose.yaml"
 _DEPLOYMENT = _ROOT / "docs" / "deployment.md"
+_SYSTEMD_UNIT = _ROOT / "deploy" / "systemd" / "devsandbox.service"
+_SYSTEMD_ENV = _ROOT / "deploy" / "systemd" / "devsandbox.env.example"
+_ORCHESTRATOR_DOCKERFILE = _ROOT / "docker" / "orchestrator" / "Dockerfile"
 
 _SSE_LOCATION = re.compile(
     r"location ~ \^/v1/projects/\[\^/\]\+/events/stream\$ \{(?P<body>.*?)\n        \}",
@@ -186,3 +189,50 @@ def test_app_has_no_direct_tls_configuration() -> None:
         assert "ssl_certfile" not in text, source
         assert "ssl_keyfile" not in text, source
         assert "ssl_cert_reqs" not in text, source
+
+
+def test_systemd_unit_runs_serve_and_stops_gracefully() -> None:
+    text = _SYSTEMD_UNIT.read_text(encoding="utf-8")
+
+    assert "ExecStart=/opt/devsandbox/.venv/bin/devsandbox serve" in text
+    assert "EnvironmentFile=/etc/devsandbox/devsandbox.env" in text
+    assert "Restart=on-failure" in text
+    assert "KillSignal=SIGTERM" in text
+    assert "TimeoutStopSec=120s" in text
+    assert "NoNewPrivileges=yes" in text
+    assert "SupplementaryGroups=docker" in text
+    assert "User=devsandbox" in text
+
+
+def test_systemd_env_example_has_no_committed_secret() -> None:
+    text = _SYSTEMD_ENV.read_text(encoding="utf-8")
+
+    assert "DEVSANDBOX_API_TOKEN=\n" in text
+    assert "DEVSANDBOX_DATABASE_URL=postgresql+asyncpg://" in text
+    assert "DEVSANDBOX_DATA_ROOT=/var/lib/devsandbox" in text
+    assert "DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE" in text
+    assert "oc_sk_" not in text
+    assert "sk-" not in text
+
+
+def test_orchestrator_image_is_a_long_running_service() -> None:
+    dockerfile = _ORCHESTRATOR_DOCKERFILE.read_text(encoding="utf-8")
+    compose = _compose(_BASE_COMPOSE)["services"]["orchestrator"]
+
+    assert 'CMD ["devsandbox", "serve"]' in dockerfile
+    assert "HEALTHCHECK" in dockerfile
+    assert "STOPSIGNAL SIGTERM" in dockerfile
+    assert "tini" in dockerfile
+    assert compose["stop_grace_period"] == "120s"
+    assert compose["environment"]["DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE"] == (
+        "${DEVSANDBOX_MIGRATIONS_AUTO_UPGRADE:-true}"
+    )
+
+
+def test_deployment_docs_describe_startup_migrations_for_both_wrappers() -> None:
+    normalized = " ".join(_DEPLOYMENT.read_text(encoding="utf-8").split())
+
+    assert "deploy/systemd/devsandbox.service" in normalized
+    assert "Startup migrations are on by default." in normalized
+    assert "PostgreSQL advisory lock" in normalized
+    assert "DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE=false" in normalized

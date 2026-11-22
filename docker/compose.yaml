@@ -58,6 +58,10 @@ services:
       DEVSANDBOX_VALIDATION__IMAGE: ${DEVSANDBOX_VALIDATOR_IMAGE:-devsandbox/validator:latest}
       DEVSANDBOX_SECURITY__REQUIRE_PINNED_IMAGES: ${DEVSANDBOX_REQUIRE_PINNED_IMAGES:-false}
       DEVSANDBOX_SECURITY__ALLOW_PUSH: "false"
+      # Startup migrations run before the API binds.  PostgreSQL advisory
+      # locking makes overlapping container restarts safe.
+      DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE: ${DEVSANDBOX_MIGRATIONS_AUTO_UPGRADE:-true}
+      DEVSANDBOX_MIGRATIONS__LOCK_TIMEOUT_SECONDS: ${DEVSANDBOX_MIGRATIONS_LOCK_TIMEOUT_SECONDS:-120}
       # Project repos given as local paths must also exist at the same path
       # inside this container (mount their parent explicitly), or use URLs.
     ports:
@@ -73,6 +77,8 @@ services:
       - "${DOCKER_GID:-999}"
     security_opt:
       - no-new-privileges:true
+    # Match the engine's graceful-shutdown window (in-flight attempts).
+    stop_grace_period: 120s
     restart: unless-stopped
 
 volumes:

@@ -6,6 +6,11 @@ double underscore, for example `DEVSANDBOX_SECURITY__ALLOW_NETWORK_DEFAULT=true`
 and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
 
 - `data_root`, `database_url`
+- `migrations`: `auto_upgrade` (default `true`; apply the packaged Alembic chain
+  before `serve` binds the API or starts the engine), `lock_timeout_seconds`
+  (default `120`; PostgreSQL advisory-lock wait for contending starts). Disable
+  only when migrations are a separate deployment step. See
+  [deployment.md](deployment.md#55-container-and-systemd-packaging-startup-migrations).
 - `limits`: `max_global_concurrency` (MVP default 1), `max_project_concurrency`,
   `cpu_headroom_pct`, `mem_headroom_pct`, `disk_min_free_mb`,
   `pressure_cpu_pct`, `pressure_mem_pct`

@@ -29,6 +29,27 @@ class LimitsConfig(BaseModel):
         return value
 
 
+class MigrationsConfig(BaseModel):
+    """Startup database migration behavior for container/systemd deployments.
+
+    ``auto_upgrade`` applies the packaged Alembic chain before the API or
+    orchestration engine starts.  PostgreSQL deployments serialize the upgrade
+    with an advisory lock, so overlapping service restarts cannot race the
+    schema.  Set it to false only when migrations are run as a separate deploy
+    step.
+    """
+
+    auto_upgrade: bool = True
+    lock_timeout_seconds: float = 120.0
+
+    @field_validator("lock_timeout_seconds")
+    @classmethod
+    def _positive_lock_timeout(cls, value: float) -> float:
+        if value <= 0.0:
+            raise ValueError("migrations.lock_timeout_seconds must be > 0")
+        return value
+
+
 class RetriesConfig(BaseModel):
     """Retry / backoff policy."""
 
@@ -388,6 +409,7 @@ class DevSandboxSettings(BaseSettings):
 
     data_root: str = "/var/lib/devsandbox"
     database_url: str = "postgresql+asyncpg://devsandbox:devsandbox@localhost:5432/devsandbox"
+    migrations: MigrationsConfig = MigrationsConfig()
     limits: LimitsConfig = LimitsConfig()
     retries: RetriesConfig = RetriesConfig()
     git: GitSettings = GitSettings()

@@ -19,12 +19,18 @@ devsandbox db downgrade [REVISION] # default: -1 (one step back)
 ```
 
 Migrations are packaged with the installed module, not tied to a repository
-checkout, so the CLI works from a wheel as well. `tests/integration/
-test_db_migrations.py` covers:
+checkout, so the CLI works from a wheel as well. `devsandbox serve` applies them
+at startup by default (`migrations.auto_upgrade`), using a PostgreSQL advisory
+lock so overlapping container/systemd restarts cannot race the schema. The
+systemd unit and container image both rely on this behavior; see
+[deployment.md](deployment.md#55-container-and-systemd-packaging-startup-migrations).
+
+`tests/integration/test_db_migrations.py` covers:
 
 - `upgrade head → downgrade base → upgrade head` on a clean PostgreSQL schema;
 - `0007 → 0006 → 0007` (the reversible task-pause column);
-- a downgrade against an empty schema is a harmless no-op.
+- a downgrade against an empty schema is a harmless no-op;
+- idempotent startup upgrades and advisory-lock timeout behavior.
 
 ## Backup and restore
 

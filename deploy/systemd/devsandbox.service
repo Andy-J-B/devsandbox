@@ -1,0 +1,45 @@
+[Unit]
+Description=DevSandbox orchestrator (API + execution engine)
+Documentation=https://github.com/devsandbox/devsandbox/blob/main/docs/deployment.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=devsandbox
+Group=devsandbox
+# The orchestrator talks to the host Docker daemon.  The user must be in the
+# socket's group (normally "docker"); remove this line if you use a rootless
+# daemon socket owned by the service user.
+SupplementaryGroups=docker
+EnvironmentFile=/etc/devsandbox/devsandbox.env
+WorkingDirectory=/var/lib/devsandbox
+# Startup migrations run inside `serve` before the API binds.  Set
+# DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE=false in the env file to run them as a
+# separate deployment step instead.
+ExecStart=/opt/devsandbox/.venv/bin/devsandbox serve
+Restart=on-failure
+RestartSec=5s
+# Give the engine time to finish in-flight attempts and release its lease.
+KillSignal=SIGTERM
+TimeoutStopSec=120s
+UMask=0077
+
+# Hardening for the control-plane process.  It still needs write access to the
+# data root and the Docker socket; those are the deliberate exceptions.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/var/lib/devsandbox
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

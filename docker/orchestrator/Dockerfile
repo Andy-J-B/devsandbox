@@ -39,5 +39,13 @@ ENV DEVSANDBOX_DATA_ROOT=/data \
 USER devsandbox
 EXPOSE 8000
 
+# `devsandbox serve` applies packaged Alembic migrations before binding the
+# API (serialized with a PostgreSQL advisory lock).  Disable with
+# DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE=false when migrations are a separate
+# deployment step.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).read()"]
+STOPSIGNAL SIGTERM
+
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["devsandbox", "serve"]

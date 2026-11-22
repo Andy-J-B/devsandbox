@@ -178,22 +178,16 @@ def _exit_if_failed(status: str | None) -> None:
 
 def _alembic_config(database_url: str) -> Any:
     """Build an Alembic config that resolves the packaged migrations."""
-    from alembic.config import Config
+    from ..db.migrations_runner import alembic_config
 
-    # Resolve migrations from the installed package (site-packages in a wheel,
-    # src/ in a checkout) instead of assuming a repository checkout exists.
-    package_root = Path(__file__).resolve().parents[1]
-    config = Config()
-    config.set_main_option("script_location", str(package_root / "db" / "migrations"))
-    config.set_main_option("sqlalchemy.url", database_url)
-    return config
+    return alembic_config(database_url)
 
 
 def _alembic_upgrade(database_url: str) -> None:
     """Apply the packaged migrations to ``database_url``."""
-    from alembic import command
+    from ..db.migrations_runner import run_startup_migrations
 
-    command.upgrade(_alembic_config(database_url), "head")
+    run_startup_migrations(database_url)
 
 
 def _alembic_move(database_url: str, revision: str, *, upgrade: bool) -> None:

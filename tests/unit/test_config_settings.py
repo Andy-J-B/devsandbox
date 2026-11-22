@@ -89,3 +89,25 @@ def test_git_blob_cap_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> No
 def test_git_blob_cap_must_be_positive() -> None:
     with pytest.raises(ValueError, match="max_blob_bytes"):
         DevSandboxSettings(_env_file=None, git={"max_blob_bytes": 0})
+
+
+def test_startup_migrations_are_enabled_by_default() -> None:
+    settings = DevSandboxSettings(_env_file=None)
+
+    assert settings.migrations.auto_upgrade is True
+    assert settings.migrations.lock_timeout_seconds == 120.0
+
+
+def test_startup_migrations_can_be_disabled_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE", "false")
+    monkeypatch.setenv("DEVSANDBOX_MIGRATIONS__LOCK_TIMEOUT_SECONDS", "30")
+
+    settings = DevSandboxSettings(_env_file=None)
+
+    assert settings.migrations.auto_upgrade is False
+    assert settings.migrations.lock_timeout_seconds == 30.0
+
+
+def test_startup_migration_lock_timeout_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="lock_timeout_seconds"):
+        DevSandboxSettings(_env_file=None, migrations={"lock_timeout_seconds": 0})

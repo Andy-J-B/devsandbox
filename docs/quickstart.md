@@ -96,10 +96,13 @@ devsandbox init-db
 devsandbox serve            # API + orchestration engine on 127.0.0.1:8000
 ```
 
-`init-db` applies every packaged migration to `DEVSANDBOX_DATABASE_URL`. A
-database that already contains DevSandbox tables but has no `alembic_version`
-row cannot be upgraded automatically; recreate it, or stamp the migration that
-matches its schema before running `init-db`.
+`init-db` applies every packaged migration to `DEVSANDBOX_DATABASE_URL`.
+`devsandbox serve` also applies them automatically at startup (serialized by a
+PostgreSQL advisory lock), so the explicit `init-db` step is mainly useful for
+pre-deploy checks or when `migrations.auto_upgrade=false`. A database that
+already contains DevSandbox tables but has no `alembic_version` row cannot be
+upgraded automatically; recreate it, or stamp the migration that matches its
+schema before running `init-db`.
 
 For HTTP-only inspection (no engine loop), use `devsandbox serve --no-engine`.
 Bind elsewhere deliberately with `--host`; exposing the API beyond loopback is

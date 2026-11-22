@@ -90,6 +90,21 @@ def run(
         }
     )
     resolved = resolved.model_copy(update={"api": api})
+    if resolved.migrations.auto_upgrade:
+        # Run before the container builds its engine/session factory.  The
+        # helper resolves the migrations from the installed package and takes
+        # an advisory lock so overlapping container/systemd restarts cannot
+        # race the schema.
+        from ..db.migrations_runner import run_startup_migrations
+
+        _log.info(
+            "applying database migrations",
+            lock_timeout_seconds=resolved.migrations.lock_timeout_seconds,
+        )
+        run_startup_migrations(
+            resolved.database_url,
+            lock_timeout_seconds=resolved.migrations.lock_timeout_seconds,
+        )
     container = build_container(resolved)
     app = create_server_app(container)
     _log.info(

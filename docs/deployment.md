@@ -222,6 +222,50 @@ orchestrator, daemon, PostgreSQL, and data root on a host that holds no
 production credentials and no unrelated containers. Snapshot or recreate the
 host after experiments. Back up `<data_root>` if you need the audit history.
 
+## 5.5 Container and systemd packaging (startup migrations)
+
+Both supported service wrappers run the same command and apply the same schema
+policy:
+
+- **Container:** `docker/compose.yaml` builds `devsandbox/orchestrator:local`
+  from `docker/orchestrator/Dockerfile`. The image runs `devsandbox serve`
+  under `tini`, exposes a `/healthz` health check, and receives `SIGTERM` for a
+  graceful engine shutdown.
+- **systemd:** `deploy/systemd/devsandbox.service` runs `devsandbox serve` as an
+  unprivileged `devsandbox` user with `docker` as a supplementary group. Copy
+  it to `/etc/systemd/system/`, install the environment file from
+  `deploy/systemd/devsandbox.env.example` as
+  `/etc/devsandbox/devsandbox.env` with mode `0600`, then:
+
+  ```bash
+  sudo useradd --system --create-home --home-dir /opt/devsandbox devsandbox
+  sudo python3.12 -m venv /opt/devsandbox/.venv
+  sudo /opt/devsandbox/.venv/bin/pip install 'devsandbox==0.1.0'
+  sudo install -d -o devsandbox -g devsandbox -m 0750 /var/lib/devsandbox
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now devsandbox
+  sudo journalctl -u devsandbox -f
+  ```
+
+  Adjust `ReadWritePaths` and `DEVSANDBOX_DATA_ROOT` if the data root is not
+  `/var/lib/devsandbox`. If you use rootless Docker, replace
+  `SupplementaryGroups=docker` with the service user's own socket path/UID
+  settings described in Option A.
+
+**Startup migrations are on by default.** `devsandbox serve` applies the
+Alembic chain packaged inside the installed module *before* the API binds or the
+engine starts. The upgrade takes a PostgreSQL advisory lock, so a rolling
+restart or two containers starting at once serialize the migration instead of
+racing the schema. The wait is bounded by
+`migrations.lock_timeout_seconds` (default 120 s); a timeout is a startup
+failure, not a partially migrated service.
+
+Operators who run migrations as a separate deploy step can set
+`DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE=false` and run `devsandbox init-db` (or
+`devsandbox db upgrade`) first. `devsandbox init-db` uses the same advisory lock.
+Downgrades remain an explicit offline operation (`devsandbox db downgrade`) and
+never run at startup.
+
 ## 6. API exposure, TLS, and token rotation
 
 The API binds to `127.0.0.1` by default. That is the recommended deployment:

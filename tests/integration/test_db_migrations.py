@@ -5,10 +5,17 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from devsandbox.db.migrations_runner import (
+    MIGRATION_LOCK_KEY,
+    MigrationLockTimeoutError,
+    upgrade_database,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS = ROOT / "src" / "devsandbox" / "db" / "migrations"
@@ -127,4 +134,43 @@ async def test_downgrade_without_version_table_is_a_noop(postgres_url: str) -> N
 
     await _run_alembic(postgres_url, "downgrade", "base")
 
+    assert APP_TABLES.isdisjoint(await _tables(postgres_url))
+
+
+async def test_startup_upgrade_is_idempotent(postgres_url: str) -> None:
+    """The packaged startup helper applies head and is safe to rerun."""
+    await _reset_schema(postgres_url)
+
+    assert await upgrade_database(postgres_url) == "0007"
+    assert await upgrade_database(postgres_url) == "0007"
+
+    assert APP_TABLES.issubset(await _tables(postgres_url))
+    assert await _revision(postgres_url) == "0007"
+
+
+async def test_startup_upgrade_times_out_when_migration_lock_is_held(
+    postgres_url: str,
+) -> None:
+    """A concurrent startup waits for the advisory lock, then fails clearly."""
+    await _reset_schema(postgres_url)
+    holder = create_async_engine(postgres_url)
+    try:
+        async with holder.connect() as connection:
+            locked = await connection.execute(
+                text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": MIGRATION_LOCK_KEY},
+            )
+            assert locked.scalar_one() is True
+            try:
+                with pytest.raises(MigrationLockTimeoutError):
+                    await upgrade_database(postgres_url, lock_timeout_seconds=0.1)
+            finally:
+                await connection.execute(
+                    text("SELECT pg_advisory_unlock(:key)"),
+                    {"key": MIGRATION_LOCK_KEY},
+                )
+    finally:
+        await holder.dispose()
+
+    assert "alembic_version" not in await _tables(postgres_url)
     assert APP_TABLES.isdisjoint(await _tables(postgres_url))
