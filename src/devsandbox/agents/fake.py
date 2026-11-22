@@ -21,6 +21,7 @@ from ..sandbox.interfaces import SandboxManager, SandboxRequest
 from .fake_agent_script import FAKE_AGENT_SOURCE
 from .interfaces import AgentRunRequest, AgentRunResult
 from .sandbox_result import (
+    await_managed_container,
     build_labels,
     clean_summary,
     map_exit_status,
@@ -111,9 +112,13 @@ class FakeScriptAdapter:
         started_at = utcnow()
         run_task = asyncio.create_task(self._sandbox.run(sandbox_request))
         if self._faults is not None:
-            await self._await_container(req)
+            await await_managed_container(self._sandbox, req.workspace.attempt_id)
             await self._faults.checkpoint("after_container_started")
-        result = await run_task
+        try:
+            result = await run_task
+        except asyncio.CancelledError:
+            run_task.cancel()
+            raise
         duration = (utcnow() - started_at).total_seconds()
         stdout = read_log_text(result.stdout_path)
         stderr = read_log_text(result.stderr_path)
@@ -128,18 +133,6 @@ class FakeScriptAdapter:
             summary=summary,
             duration_seconds=duration,
         )
-
-    async def _await_container(self, req: AgentRunRequest) -> None:
-        """Wait until the sandbox manager has created the attempt container."""
-        container_id = f"ds-{req.workspace.attempt_id}"
-        for _ in range(1200):
-            found = await self._sandbox.inspect(container_id)
-            if found is not None:
-                return
-            for container in await self._sandbox.list_managed():
-                if container.labels.get("devsandbox.attempt") == str(req.workspace.attempt_id):
-                    return
-            await asyncio.sleep(0.05)
 
     async def cancel(self, attempt_id: AttemptId) -> None:
         """Kill the deterministic container for ``attempt_id``."""

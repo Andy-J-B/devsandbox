@@ -100,6 +100,10 @@ async def _run(args: argparse.Namespace) -> None:
         await connection.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
 
+    faults = FaultInjector()
+    if args.crash_at:
+        faults = KillingFaultInjector({args.crash_at})
+
     sandbox = DockerSandboxManager(settings, args.data_root)
     agent = MarkerAgent(
         sandbox,
@@ -108,13 +112,11 @@ async def _run(args: argparse.Namespace) -> None:
         default=Script(file="docs/worker-result.md"),
         delay_seconds=args.delay_seconds,
         marker=args.marker,
+        faults=faults,
     )
     planner = FixedPlanner(
         lambda spec: [task_draft(args.task, max_retries=args.max_retries, timeout_seconds=120)]
     )
-    faults = FaultInjector()
-    if args.crash_at:
-        faults = KillingFaultInjector({args.crash_at})
     orchestrator_config = OrchestratorConfig.from_settings(
         settings,
         idle_sleep_seconds=0.01,

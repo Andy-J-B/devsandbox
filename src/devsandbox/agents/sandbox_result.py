@@ -6,13 +6,14 @@ agent adapter, so both map container outcomes identically.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import re
 from pathlib import Path
 
 from ..common.redaction import redact
 from ..common.types import AttemptId
-from ..sandbox.interfaces import SandboxResult
+from ..sandbox.interfaces import SandboxManager, SandboxResult
 from .interfaces import AgentExitStatus, AgentRunRequest
 
 _MAX_LOG_READ_BYTES = 4 * 1024 * 1024
@@ -103,7 +104,33 @@ def resolve_project_id(req: AgentRunRequest) -> str | None:
     return None
 
 
+async def await_managed_container(
+    sandbox: SandboxManager,
+    attempt_id: AttemptId,
+    *,
+    timeout_seconds: float = 60.0,
+    poll_seconds: float = 0.05,
+) -> bool:
+    """Wait until the attempt container is visible to the sandbox manager.
+
+    Returns ``False`` on timeout.  Used by crash-injection tests that need a
+    checkpoint after container creation but before the agent command finishes.
+    """
+    container_id = f"ds-{attempt_id}"
+    deadline = asyncio.get_running_loop().time() + max(0.0, timeout_seconds)
+    while True:
+        if await sandbox.inspect(container_id) is not None:
+            return True
+        for container in await sandbox.list_managed():
+            if container.labels.get("devsandbox.attempt") == str(attempt_id):
+                return True
+        if asyncio.get_running_loop().time() >= deadline:
+            return False
+        await asyncio.sleep(poll_seconds)
+
+
 __all__ = [
+    "await_managed_container",
     "build_labels",
     "clean_summary",
     "map_exit_status",

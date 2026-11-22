@@ -23,6 +23,7 @@ from devsandbox.common.errors import BudgetExceeded, ConfigError, SandboxError
 from devsandbox.common.redaction import register_secret, reset_redactor
 from devsandbox.common.types import ModelConfig, NetworkPolicy, ResourceProfile
 from devsandbox.config.settings import SecretRef
+from devsandbox.sandbox.interfaces import ManagedContainer
 
 
 @pytest.fixture(autouse=True)
@@ -102,6 +103,24 @@ async def test_run_success_persists_audit_files_outside_repo_and_builds_request(
     assert "canary-model-secret-123456" not in config_path.read_text()
     assert "canary-model-secret-123456" not in json.dumps(call.env)
     assert "canary-model-secret-123456" not in " ".join(call.command)
+
+
+async def test_run_emits_after_container_started_checkpoint(tmp_path: Path) -> None:
+    workspace, _ = make_workspace(tmp_path)
+    sandbox = FakeSandboxManager()
+    checkpoints: list[str] = []
+
+    async def record(name: str) -> None:
+        checkpoints.append(name)
+
+    settings = make_settings()
+    adapter = OpenCodeAdapter(sandbox, settings, checkpoint=record)
+    sandbox.managed.append(ManagedContainer(container_id="ds-attempt-1", state="running"))
+    sandbox.queue_result(sandbox_result(*write_logs(tmp_path)))
+
+    await adapter.run(make_request(workspace))
+
+    assert checkpoints == ["after_container_started"]
 
 
 async def test_config_is_inline_safe_and_references_env_only(

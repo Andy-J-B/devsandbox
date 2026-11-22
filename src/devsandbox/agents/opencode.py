@@ -16,8 +16,10 @@ disk in the config.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +33,7 @@ from .interfaces import AgentRunRequest, AgentRunResult
 from .models import UsageLimiter
 from .prompt import build_prompt
 from .sandbox_result import (
+    await_managed_container,
     build_labels,
     clean_summary,
     map_exit_status,
@@ -124,6 +127,7 @@ class OpenCodeAdapter:
         secret_provider: SecretProvider | None = None,
         usage_limiter: UsageLimiter | None = None,
         prompt_dir: str | Path | None = None,
+        checkpoint: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._sandbox = sandbox
         self._settings = settings
@@ -132,6 +136,7 @@ class OpenCodeAdapter:
         self._secrets = secret_provider or SecretProvider(settings)
         self._usage = usage_limiter or UsageLimiter(settings)
         self._prompt_dir = Path(prompt_dir) if prompt_dir is not None else None
+        self._checkpoint = checkpoint
 
     async def run(self, req: AgentRunRequest) -> AgentRunResult:
         """Run OpenCode for ``req`` and return an untrusted result."""
@@ -193,8 +198,12 @@ class OpenCodeAdapter:
         )
 
         started_at = utcnow()
+        run_task = asyncio.create_task(self._sandbox.run(sandbox_request))
+        if self._checkpoint is not None:
+            await await_managed_container(self._sandbox, req.workspace.attempt_id)
+            await self._checkpoint("after_container_started")
         try:
-            result = await self._sandbox.run(sandbox_request)
+            result = await run_task
         except SandboxError as exc:
             duration = (utcnow() - started_at).total_seconds()
             return AgentRunResult(
@@ -204,6 +213,11 @@ class OpenCodeAdapter:
                 summary=clean_summary(str(exc)),
                 duration_seconds=duration,
             )
+        except asyncio.CancelledError:
+            # Preserve the previous direct-await cancellation semantics: an
+            # aborted attempt must also stop the sandbox command.
+            run_task.cancel()
+            raise
 
         duration = (utcnow() - started_at).total_seconds()
         stdout = read_log_text(result.stdout_path)
