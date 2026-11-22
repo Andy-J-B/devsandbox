@@ -188,7 +188,12 @@ async def test_e8_sigkill_mid_run_recovers_without_duplicates(e2e_env, tmp_path:
 @pytest.mark.parametrize(
     ("checkpoint", "label"),
     [
+        ("after_event_insert", "mid-attempt-insert"),
+        ("after_event_insert_agent_started", "mid-agent-start-event"),
+        ("after_container_started", "mid-container-start"),
         ("after_validation_report", "mid-validation"),
+        ("before_git_commit", "before-git-commit"),
+        ("after_git_commit", "after-git-commit"),
         ("after_staging_advance_before_db", "mid-integration"),
     ],
 )
@@ -220,6 +225,9 @@ async def test_e8_sigkill_checkpoint_recovers(
 CRASH_CHECKPOINTS = [
     "after_attempt_created",
     "after_attempt_row",
+    "after_event_insert",
+    "after_event_insert_agent_started",
+    "after_container_started",
     "after_workspace",
     "before_agent",
     "after_agent",
@@ -229,6 +237,8 @@ CRASH_CHECKPOINTS = [
     "after_validation_report",
     "before_integration",
     "after_prepare_integration",
+    "before_git_commit",
+    "after_git_commit",
     "after_staging_advance_before_db",
     "after_integration_commit",
 ]

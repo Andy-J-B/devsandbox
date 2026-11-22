@@ -98,3 +98,25 @@ After the task pass, recovery:
 
 Postgres is the source of truth: recovery never infers task completion from a
 container alone, and never trusts an agent's self-report.
+
+## Crash checkpoints
+
+`FaultInjector` is the test seam used to kill a real worker process at named
+boundaries. Besides the plan-11 checkpoints (`after_attempt_row`,
+`after_collect`, `after_validation_report`, `after_prepare_integration`,
+`after_staging_advance_before_db`), the current pipeline covers:
+
+| Checkpoint | What may already exist when the process dies |
+|---|---|
+| `after_event_insert` | attempt row / status change and `attempt.created` are still uncommitted and roll back together |
+| `after_event_insert_agent_started` | `SCHEDULED → RUNNING` and `agent.started` are still uncommitted; no agent has run |
+| `after_container_started` | container is visible to the sandbox manager, agent command may still be running |
+| `before_git_commit` / `after_git_commit` | integration candidate prepared; after the second, staging may already contain the attempt commit while the DB row is still `prepared` |
+| `before_push` / `after_push` | `GitManagerImpl.push_branch` is entering or leaving the actual `git push`; retries are safe because push is non-force |
+| `before_replan` / `after_replan` / `after_replan_event` | autonomous replan call boundary, after the new plan/version persists, and after its audit event commits |
+
+`tests/e2e/test_e2e_crash_soak.py` randomizes the pipeline checkpoints with real
+`SIGKILL`; `tests/integration/test_orchestrator_recovery.py` covers the event
+and git-commit boundaries with deterministic in-process crashes. The replan
+checkpoints assert that a restart never invokes the replanner a second time for
+the same failure.

@@ -31,7 +31,7 @@ from devsandbox.db.repositories import (
     ProjectRepo,
 )
 from devsandbox.gitmgr.interfaces import IntegrationResult
-from devsandbox.orchestrator.engine import OrchestratorEngine
+from devsandbox.orchestrator.engine import FaultInjector, OrchestratorEngine, SimulatedCrash
 from devsandbox.orchestrator.models import OrchestratorConfig
 from devsandbox.orchestrator.project_service import ProjectService
 from devsandbox.scheduler.config import SchedulerConfig
@@ -454,6 +454,64 @@ async def test_autonomous_replans_are_bounded(db_engine, settings) -> None:
 
     await engine.run_until_idle()
     assert replans == ["proj-1"]
+
+
+@pytest.mark.parametrize(
+    ("checkpoint", "expected_replans"),
+    [
+        ("before_replan", 0),
+        ("after_replan", 1),
+        ("after_replan_event", 1),
+    ],
+)
+async def test_replan_checkpoints_do_not_duplicate_replans(
+    db_engine, settings, checkpoint: str, expected_replans: int
+) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    await seed_project(maker, make_spec(), keys=["t-a"], max_retries=0, mode="autonomous")
+    agent = FakeAgentAdapter()
+    agent.queue_result(_result("exited_error", 1))
+    replans: list[str] = []
+
+    async def replanner(project_id: str, failures) -> object:
+        replans.append(project_id)
+        return object()
+
+    config = OrchestratorConfig(
+        backoff_base_seconds=0.0,
+        backoff_max_seconds=0.0,
+        max_replans=1,
+        idle_sleep_seconds=0.001,
+        tick_seconds=0.001,
+    )
+    first = _engine(
+        maker,
+        settings,
+        clock,
+        agent=agent,
+        replanner=replanner,
+        config=config,
+        faults=FaultInjector({checkpoint}),
+        lease_holder="replan-crash-test",
+    )
+    with pytest.raises(SimulatedCrash):
+        await first.run_until_idle()
+    assert len(replans) == expected_replans
+
+    # A restart must not call the replanner a second time for the same failure.
+    second = _engine(
+        maker,
+        settings,
+        clock,
+        agent=FakeAgentAdapter(),
+        replanner=replanner,
+        config=config,
+        lease_holder="replan-crash-test",
+    )
+    await second.run_until_idle()
+
+    assert len(replans) == expected_replans
 
 
 async def test_over_policy_resources_are_clamped_and_audited(db_engine, settings) -> None:

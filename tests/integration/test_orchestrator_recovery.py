@@ -405,10 +405,14 @@ async def _crash_then_recover(db_engine, settings, checkpoint: str, *, max_retri
     "checkpoint",
     [
         "after_attempt_created",
+        "after_event_insert",
+        "after_event_insert_agent_started",
         "after_workspace",
         "before_agent",
         "after_validation",
         "before_integration",
+        "before_git_commit",
+        "after_git_commit",
         "after_integration_commit",
     ],
 )

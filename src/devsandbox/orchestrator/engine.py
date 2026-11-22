@@ -867,6 +867,9 @@ class OrchestratorEngine:
                 event_type=events.ATTEMPT_CREATED,
                 payload={"number": number, "agent": self.agent.name},
             )
+            # Crash inside the transaction: neither the attempt row nor its
+            # audit event may survive.  The next process retries from READY.
+            await self.faults.checkpoint("after_event_insert")
             await session.commit()
             base_attempt = updated.attempt_count
         # The attempts row is now durable; the DB count includes it.
@@ -935,6 +938,10 @@ class OrchestratorEngine:
                     "attempt_number": number,
                 },
             )
+            # Crash inside the transaction: the SCHEDULED -> RUNNING change and
+            # the AGENT_STARTED event roll back together.  No agent has been
+            # started yet, so recovery safely reverts the scheduled attempt.
+            await self.faults.checkpoint("after_event_insert_agent_started")
             await session.commit()
         await self.faults.checkpoint("before_agent")
 
@@ -1373,9 +1380,13 @@ class OrchestratorEngine:
                 commit = getattr(self.git, "commit_integration", None)
                 if not callable(commit):
                     raise RuntimeError("git manager exposes no commit_integration")
+                await self.faults.checkpoint("before_git_commit")
                 result = await commit(candidate)
+                await self.faults.checkpoint("after_git_commit")
             else:
+                await self.faults.checkpoint("before_git_commit")
                 result = await self.git.integrate_to_staging(repo, workspace, changes)
+                await self.faults.checkpoint("after_git_commit")
             await self.faults.checkpoint("after_staging_advance_before_db")
         except Exception as exc:
             await self._handle_failure(
@@ -1677,6 +1688,10 @@ class OrchestratorEngine:
             error=record.kind.value,
             validation_summary=record.summary,
         )
+        # A replan persists a new plan/task version before control returns.
+        # Crash injection here proves that a restart either sees the completed
+        # replan or can safely run it again without duplicating work.
+        await self.faults.checkpoint("before_replan")
         try:
             result = await self.replanner(task.project_id, [failure])
         except Exception as exc:
@@ -1689,6 +1704,7 @@ class OrchestratorEngine:
                 )
                 await session.commit()
             return
+        await self.faults.checkpoint("after_replan")
         async with self._session_factory() as session:
             await events.emit_event(
                 session,
@@ -1701,6 +1717,7 @@ class OrchestratorEngine:
                 },
             )
             await session.commit()
+        await self.faults.checkpoint("after_replan_event")
 
     async def _unexpected_failure(self, task_id: str, exc: BaseException) -> None:
         task = await self._load_task(TaskId(task_id))
