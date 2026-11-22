@@ -181,8 +181,30 @@ async def test_row3_running_container_exited_continues_collect(db_engine, settin
     report = await _recover(maker, settings, clock, git=FakeGitManager(), sandbox=sandbox)
 
     assert [a.kind for a in report.actions] == [RecoveryActionKind.RESUME_COLLECT]
+    assert "ds-att-1" in sandbox.destroyed
     row = await get_task(maker, tasks["t-a"].id)
     assert TaskStatus(row.status) is TaskStatus.RUNNING
+
+
+async def test_running_container_never_started_is_killed_and_retried(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(
+        maker, make_spec(), keys=["t-a"], statuses={"t-a": TaskStatus.RUNNING}
+    )
+    await seed_attempt(maker, tasks["t-a"].id, status="running", container_id="ds-att-1")
+    sandbox = FakeSandboxManager()
+    sandbox.managed.append(_managed("att-1", "created"))
+
+    report = await _recover(maker, settings, clock, git=FakeGitManager(), sandbox=sandbox)
+
+    assert [a.kind for a in report.actions] == [RecoveryActionKind.KILL_AND_RETRY]
+    assert "ds-att-1" in sandbox.destroyed
+    row = await get_task(maker, tasks["t-a"].id)
+    assert TaskStatus(row.status) is TaskStatus.RETRY_WAIT
+    async with maker() as session:
+        attempt = await AttemptRepo(session).get("att-1")
+    assert attempt is not None and attempt.status == "abandoned"
 
 
 async def test_row4_running_workspace_commits_continues_collect(db_engine, settings) -> None:

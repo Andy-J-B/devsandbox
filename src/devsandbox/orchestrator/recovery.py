@@ -221,12 +221,28 @@ class RecoveryService:
                     attempt,
                     "running container killed; retrying as infra failure",
                 )
+            # A container that was never started cannot have produced any
+            # agent work.  Destroy it and retry as an infra failure instead of
+            # resuming collection from a clean workspace.
+            if container is not None and container.state.lower() == "created":
+                await self._destroy_container(attempt, container)
+                if attempt is not None:
+                    await self._abandon_attempt(session, attempt)
+                await self._retry_infra(session, task, "container never started on recovery")
+                return self._action(
+                    RecoveryActionKind.KILL_AND_RETRY,
+                    task,
+                    attempt,
+                    "created container never started; retrying as infra failure",
+                )
             # Rows 3/4: exited container or recoverable workspace -> collect.
+            # The finished container is no longer needed, so remove it now;
+            # otherwise a crash before workspace cleanup leaves an orphan.
             if container is not None and container.state.lower() in {
                 "exited",
                 "dead",
-                "created",
             }:
+                await self._destroy_container(attempt, container)
                 return self._action(
                     RecoveryActionKind.RESUME_COLLECT,
                     task,
