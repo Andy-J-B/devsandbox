@@ -517,6 +517,39 @@ async def test_push_allowed_to_local_remote(manager: GitManagerImpl, tmp_path: P
     assert res.pushed is True
 
 
+async def test_push_reports_crash_checkpoints(tmp_path: Path) -> None:
+    settings = DevSandboxSettings(data_root=str(tmp_path / "data"), security={"allow_push": True})
+    checkpoints: list[str] = []
+
+    async def record(name: str) -> None:
+        checkpoints.append(name)
+
+    mgr = GitManagerImpl(settings, tmp_path / "data", checkpoint=record)
+    source_dir = tmp_path / "upstream"
+    await _commit_file(source_dir, "a.txt", "aaa\n", "add a")
+    repo = await _init_project(mgr, "proj-25b", RepoSource(path=str(source_dir)))
+
+    remote = tmp_path / "remote.git"
+    await _git("init", "--bare", str(remote))
+    repo = RepoHandle(
+        project_id=repo.project_id,
+        path=repo.path,
+        url=str(remote),
+        ref=repo.ref,
+        main_branch=repo.main_branch,
+        staging_branch=repo.staging_branch,
+    )
+    ws = await mgr.create_workspace(repo, "attempt-1", "main")
+    await _commit_file(Path(ws.path), "b.txt", "bbb\n", "agent")
+    cs = await mgr.collect_changes(ws)
+    await mgr.integrate_to_staging(repo, ws, cs)
+
+    res = await mgr.push_branch(repo, repo.staging_branch)
+
+    assert res.pushed is True
+    assert checkpoints == ["before_push", "after_push"]
+
+
 # ---------------------------------------------------------------------------
 # recovery / cleanup
 # ---------------------------------------------------------------------------

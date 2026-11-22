@@ -28,7 +28,7 @@ import contextlib
 import os
 import shutil
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -147,6 +147,10 @@ _ALLOWED_CORE_KEYS: frozenset[str] = frozenset(
 _MAX_WORKSPACE_GIT_CONFIG_BYTES = 1 << 20
 _BLOB_SCAN_BATCH = 512
 
+# Test/deployment seam for crash-recovery checkpoints.  The git manager stays
+# independent of the orchestrator; callers that inject faults pass a callback.
+CheckpointHook = Callable[[str], Awaitable[None]]
+
 
 def _parse_name_status_paths(output: str) -> list[str]:
     """Flatten ``git diff --name-status -z`` output into changed paths.
@@ -225,10 +229,13 @@ class GitManagerImpl:
         self,
         settings: DevSandboxSettings,
         data_root: str | Path,
+        *,
+        checkpoint: CheckpointHook | None = None,
     ) -> None:
         self._settings = settings
         self._policy = SecurityPolicy(settings)
         self._max_blob_bytes = settings.git.max_blob_bytes
+        self._checkpoint = checkpoint
         self._data_root = Path(data_root)
         self._repos_root = self._data_root / "repos"
         self._workspaces_root = self._data_root / "workspaces"
@@ -580,10 +587,16 @@ class GitManagerImpl:
             return PushResult(pushed=False, detail="refusing to push non-devsandbox branch")
         if not repo.url:
             return PushResult(pushed=False, detail="no remote URL configured")
+        if self._checkpoint is not None:
+            await self._checkpoint("before_push")
         try:
             await run_git(["push", repo.url, branch], cwd=repo.path)
         except GitCommandError as exc:
             return PushResult(pushed=False, detail=str(exc))
+        if self._checkpoint is not None:
+            # The push already succeeded.  A crash after this point is safe to
+            # retry because push is non-force and the remote ref is unchanged.
+            await self._checkpoint("after_push")
         return PushResult(pushed=True, remote_ref=branch, remote_commit="")
 
     # -- recovery helpers ---------------------------------------------------
