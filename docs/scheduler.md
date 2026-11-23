@@ -49,6 +49,23 @@ gets exactly one decision per ready task.
    `min(N × aging_per_round, aging_cap)` priority. The counter is carried in the
    snapshot; `update_deferral_counts()` returns the values to persist for the
    next round.
+6. **Cross-project fairness.** Task aging alone cannot bound starvation when
+   another project always has a higher base priority. The snapshot also carries
+   `project_consecutive_deferrals`; once a project reaches
+   `fairness_starvation_rounds` (settings `limits.fairness_starvation_rounds`,
+   default 10), its ready tasks are promoted ahead of non-starving projects.
+   The gate is a hard promotion, then normal priority ordering applies inside
+   the starving project. `update_project_deferral_counts()` resets a project
+   when any of its tasks launches and increments only for resource/concurrency/
+   model-budget defers (not backoff or pause).
+
+### Per-project quotas
+
+The scheduler uses `min(max_project_concurrency, project_max_concurrency[pid])`
+for each project. The engine fills `project_max_concurrency` from the project
+spec's `limits.max_concurrency`, so a project can narrow its own share but a
+spec can never widen the operator's policy. Specs that omit the key inherit
+`max_project_concurrency`.
 
 Defer reason codes (all recorded in the decision and therefore in audit events):
 

@@ -31,6 +31,7 @@ class SchedulerConfig(BaseModel):
     pressure_blocks_elevated: bool = False
     aging_per_round: int = 1
     aging_cap: int = 5
+    fairness_starvation_rounds: int = 10
     cancel_lowest_priority_on_critical: bool = False
     cpu_sample_interval_seconds: float = 0.1
     sampler_interval_seconds: float = 5.0
@@ -51,6 +52,8 @@ class SchedulerConfig(BaseModel):
             raise ValueError("pressure_hysteresis_samples must be >= 1")
         if self.aging_per_round < 0 or self.aging_cap < 0:
             raise ValueError("aging values must be >= 0")
+        if self.fairness_starvation_rounds < 0:
+            raise ValueError("fairness_starvation_rounds must be >= 0")
         if self.cpu_sample_interval_seconds < 0:
             raise ValueError("cpu_sample_interval_seconds must be >= 0")
         if self.sampler_interval_seconds <= 0:
@@ -78,6 +81,7 @@ class SchedulerConfig(BaseModel):
             "disk_min_free_mb": source.disk_min_free_mb,
             "pressure_cpu_pct": source.pressure_cpu_pct,
             "pressure_mem_pct": source.pressure_mem_pct,
+            "fairness_starvation_rounds": source.fairness_starvation_rounds,
         }
         values.update(overrides)
         return cls.model_validate(values)
@@ -96,5 +100,6 @@ class SchedulerConfig(BaseModel):
             pressure_blocks_elevated=self.pressure_blocks_elevated,
             aging_per_round=self.aging_per_round,
             aging_cap=self.aging_cap,
+            fairness_starvation_rounds=self.fairness_starvation_rounds,
             project_max_concurrency=dict(project_max_concurrency or {}),
         )

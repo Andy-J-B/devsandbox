@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from ..agents.interfaces import AgentAdapter, AgentRunRequest, AgentRunResult
 from ..agents.models import model_config_from_settings
 from ..common.errors import (
+    ConfigError,
     InvalidTransition,
     OrchestratorAlreadyRunning,
 )
@@ -68,6 +69,7 @@ from ..scheduler.interfaces import (
     SchedulingSnapshot,
 )
 from ..scheduler.models import DecisionAction, DeferReason, ModelBudgetState
+from ..scheduler.scheduler import update_project_deferral_counts
 from ..storage.janitor import StorageJanitor
 from ..validation.interfaces import ValidationReport, Validator
 from . import events
@@ -275,6 +277,7 @@ class OrchestratorEngine:
         self._last_lease_refresh: datetime | None = None
         self._deferrals: dict[str, str] = {}
         self._deferral_counts: dict[str, int] = {}
+        self._project_deferral_counts: dict[str, int] = {}
         self._integration_locks: dict[str, asyncio.Lock] = {}
         self._replan_counts: dict[str, int] = {}
         self._launching: set[str] = set()
@@ -551,6 +554,7 @@ class OrchestratorEngine:
                     launched += 1
             else:
                 await self._record_defer(decision)
+        self._project_deferral_counts = update_project_deferral_counts(snapshot, decisions)
         self._last_round_at = self._clock()
         self._last_pressure = snapshot.pressure.value
         self._wake.clear()
@@ -638,9 +642,13 @@ class OrchestratorEngine:
             }
             ready: list[ReadyTask] = []
             running: list[RunningTask] = []
+            project_limits: dict[str, int] = {}
             for project_id, project in executing.items():
                 if project.active_plan_id is None:
                     continue
+                override = self._project_concurrency_override(project)
+                if override is not None:
+                    project_limits[project_id] = override
                 tasks_repo = TaskRepo(session, is_legal)
                 tasks = await tasks_repo.list_for_plan(project.active_plan_id)
                 dependencies = {
@@ -682,11 +690,25 @@ class OrchestratorEngine:
             pressure=pressure,
             ready_tasks=ready,
             running=running,
-            limits=self.scheduler_config.scheduling_limits(),
+            limits=self.scheduler_config.scheduling_limits(project_limits),
             model_budget=budget,
             paused_projects=paused,
             project_modes={project.id: ProjectMode(project.mode) for project in executing.values()},
+            project_consecutive_deferrals=dict(self._project_deferral_counts),
         )
+
+    @staticmethod
+    def _project_concurrency_override(project: ProjectModel) -> int | None:
+        """Return the project's spec concurrency quota, if it sets one.
+
+        The spec may only narrow policy: the scheduler takes the minimum of
+        this value and the operator's ``max_project_concurrency``.
+        """
+        try:
+            spec = spec_from_project(project)
+        except (ConfigError, ValueError):
+            return None
+        return spec.limits.max_concurrency
 
     async def _record_defer(self, decision: ScheduleDecision) -> None:
         reason = (

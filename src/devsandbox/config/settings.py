@@ -20,6 +20,17 @@ class LimitsConfig(BaseModel):
     disk_min_free_mb: int = 1024
     pressure_cpu_pct: float = 90.0
     pressure_mem_pct: float = 90.0
+    # Promote a project whose ready work has been deferred this many
+    # consecutive rounds ahead of non-starving projects.  ``0`` disables the
+    # fairness gate.  This is operator policy and cannot be widened by a spec.
+    fairness_starvation_rounds: int = 10
+
+    @field_validator("fairness_starvation_rounds")
+    @classmethod
+    def _fairness_non_negative(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("fairness_starvation_rounds must be >= 0")
+        return value
 
     @field_validator("cpu_headroom_pct", "mem_headroom_pct", "pressure_cpu_pct", "pressure_mem_pct")
     @classmethod

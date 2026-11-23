@@ -179,6 +179,11 @@ class SchedulingLimits(BaseModel):
     pressure_blocks_elevated: bool = False
     aging_per_round: int = 1
     aging_cap: int = 5
+    # A project whose ready work has been deferred for this many consecutive
+    # rounds is promoted ahead of non-starving projects.  This bounds
+    # cross-project starvation even when another project has a permanently
+    # higher task priority.  ``0`` disables the fairness gate.
+    fairness_starvation_rounds: int = 10
     project_max_concurrency: dict[str, int] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -195,6 +200,8 @@ class SchedulingLimits(BaseModel):
             raise ValueError("disk_min_free_mb must be >= 0")
         if self.aging_per_round < 0 or self.aging_cap < 0:
             raise ValueError("aging values must be >= 0")
+        if self.fairness_starvation_rounds < 0:
+            raise ValueError("fairness_starvation_rounds must be >= 0")
         if any(value < 1 for value in self.project_max_concurrency.values()):
             raise ValueError("project concurrency overrides must be >= 1")
         return self
@@ -214,6 +221,15 @@ class SchedulingSnapshot(BaseModel):
     model_budget: dict[str, ModelBudgetState] = Field(default_factory=dict)
     paused_projects: list[str] = Field(default_factory=list)
     project_modes: dict[str, ProjectMode] = Field(default_factory=dict)
+    # Rounds each project has had ready work but no launch.  Carried in the
+    # snapshot so the decision stays pure and deterministic.
+    project_consecutive_deferrals: dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _valid_project_deferrals(self) -> SchedulingSnapshot:
+        if any(value < 0 for value in self.project_consecutive_deferrals.values()):
+            raise ValueError("project_consecutive_deferrals values must be >= 0")
+        return self
 
 
 class DecisionAction(StrEnum):

@@ -35,6 +35,7 @@ from devsandbox.orchestrator.engine import FaultInjector, OrchestratorEngine, Si
 from devsandbox.orchestrator.models import OrchestratorConfig
 from devsandbox.orchestrator.project_service import ProjectService
 from devsandbox.scheduler.config import SchedulerConfig
+from devsandbox.scheduler.models import DeferReason, ScheduleDecision
 
 
 def _result(status: str = "exited_ok", exit_code: int = 0) -> AgentRunResult:
@@ -810,6 +811,32 @@ async def test_max_total_attempts_breaker_is_exact_under_concurrency(db_engine, 
     breaker = [event for event in events if event.type == "CIRCUIT_BREAKER"]
     assert breaker
     assert breaker[0].payload_json["reason"] == "max_total_attempts reached"
+
+
+async def test_project_spec_concurrency_narrows_scheduler_quota(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    spec = make_spec()
+    spec = spec.model_copy(
+        update={"limits": spec.limits.model_copy(update={"max_concurrency": 1})}
+    )
+    await seed_project(maker, spec, keys=["t-a", "t-b"])
+    scheduler = FakeScheduler(
+        callback=lambda snapshot: [
+            ScheduleDecision.defer(
+                task.task_id,
+                DeferReason.CONCURRENCY_PROJECT,
+                "test holds the queue",
+            )
+            for task in snapshot.ready_tasks
+        ]
+    )
+    engine = _engine(maker, settings, clock, scheduler=scheduler)
+
+    await engine.run_once()
+
+    assert scheduler.snapshots
+    assert scheduler.snapshots[0].limits.project_max_concurrency == {"proj-1": 1}
 
 
 async def test_model_budget_defers_every_launch(db_engine, settings) -> None:

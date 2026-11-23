@@ -67,9 +67,28 @@ def effective_priority(task: ReadyTask, limits: SchedulingLimits) -> int:
     return task.priority + aging
 
 
-def ordering_key(task: ReadyTask, snapshot: SchedulingSnapshot) -> tuple[int, int, int, str]:
+def starving_projects(snapshot: SchedulingSnapshot) -> set[str]:
+    """Return projects that have been deferred long enough to need a turn.
+
+    The fairness gate is intentionally a hard promotion rather than more aging
+    credit: a project with a permanently higher task priority would otherwise
+    keep a lower-priority project starved even after the aging cap is reached.
+    """
+    rounds = snapshot.limits.fairness_starvation_rounds
+    if rounds <= 0:
+        return set()
+    return {
+        project_id
+        for project_id, count in snapshot.project_consecutive_deferrals.items()
+        if count >= rounds
+    }
+
+
+def ordering_key(task: ReadyTask, snapshot: SchedulingSnapshot) -> tuple[int, int, int, int, str]:
     """Return the total order used by the scheduler (deterministic on ties)."""
+    starving = starving_projects(snapshot)
     return (
+        0 if task.project_id in starving else 1,
         -effective_priority(task, snapshot.limits),
         -task.critical_path_length,
         task.created_order,
@@ -324,6 +343,38 @@ def update_deferral_counts(
             result[task.task_id] = task.consecutive_deferrals + 1
         else:
             result[task.task_id] = task.consecutive_deferrals
+    return result
+
+
+def update_project_deferral_counts(
+    snapshot: SchedulingSnapshot,
+    decisions: list[ScheduleDecision],
+) -> dict[str, int]:
+    """Return the next fairness counter for every project with ready work.
+
+    A project gets a fresh turn whenever any of its tasks launches.  It accrues
+    one starvation round when it had ready work but every task was blocked by
+    resources, concurrency, or the model budget.  Backoff/paused defers do not
+    count as starvation because the project could not run for a different
+    reason.  Projects without ready work are dropped from the map.
+    """
+    project_for_task = {task.task_id: task.project_id for task in snapshot.ready_tasks}
+    by_project: dict[str, list[ScheduleDecision]] = {}
+    for decision in decisions:
+        project_id = project_for_task.get(decision.task_id)
+        if project_id is None:
+            continue
+        by_project.setdefault(project_id, []).append(decision)
+
+    result: dict[str, int] = {}
+    for project_id, project_decisions in by_project.items():
+        previous = snapshot.project_consecutive_deferrals.get(project_id, 0)
+        if any(decision.action is DecisionAction.LAUNCH for decision in project_decisions):
+            result[project_id] = 0
+        elif any(decision.reason_code in _AGING_REASONS for decision in project_decisions):
+            result[project_id] = previous + 1
+        else:
+            result[project_id] = previous
     return result
 
 

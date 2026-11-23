@@ -25,6 +25,7 @@ from devsandbox.scheduler.scheduler import (
     ordered_tasks,
     select_decisions,
     update_deferral_counts,
+    update_project_deferral_counts,
 )
 
 NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -557,3 +558,95 @@ def test_async_scheduler_adapter_is_pure() -> None:
     first = asyncio.run(scheduler.select(snapshot))
     second = asyncio.run(scheduler.select(snapshot))
     assert first == second == [match for match in first if match.action is DecisionAction.LAUNCH]
+
+
+# --------------------------------------------------------------- fairness
+def test_starving_project_is_promoted_ahead_of_higher_priority_work() -> None:
+    snapshot = make_snapshot(
+        limits=make_limits(max_global_concurrency=1, fairness_starvation_rounds=3),
+        ready_tasks=[
+            make_task("high", project_id="busy", priority=100, created_order=0),
+            make_task("low", project_id="waiting", priority=0, created_order=1),
+        ],
+        project_consecutive_deferrals={"waiting": 3},
+    )
+    decisions = select_decisions(snapshot)
+    assert decisions[0].task_id == "low"
+    assert decisions[0].action is DecisionAction.LAUNCH
+    assert decisions[1].reason_code is DeferReason.CONCURRENCY_GLOBAL
+
+
+def test_fairness_gate_can_be_disabled() -> None:
+    snapshot = make_snapshot(
+        limits=make_limits(max_global_concurrency=1, fairness_starvation_rounds=0),
+        ready_tasks=[
+            make_task("high", project_id="busy", priority=100, created_order=0),
+            make_task("low", project_id="waiting", priority=0, created_order=1),
+        ],
+        project_consecutive_deferrals={"waiting": 100},
+    )
+    assert select_decisions(snapshot)[0].task_id == "high"
+
+
+def test_project_deferral_counts_accrue_and_reset_on_launch() -> None:
+    snapshot = make_snapshot(
+        limits=make_limits(max_global_concurrency=1),
+        ready_tasks=[
+            make_task("a1", project_id="a", created_order=0),
+            make_task("b1", project_id="b", created_order=1),
+        ],
+        project_consecutive_deferrals={"b": 2},
+    )
+    decisions = select_decisions(snapshot)
+    assert update_project_deferral_counts(snapshot, decisions) == {"a": 0, "b": 3}
+
+    next_snapshot = snapshot.model_copy(
+        update={
+            "ready_tasks": [make_task("b1", project_id="b", created_order=1)],
+            "project_consecutive_deferrals": {"b": 3},
+            "limits": make_limits(max_global_concurrency=1, fairness_starvation_rounds=3),
+        }
+    )
+    next_decisions = select_decisions(next_snapshot)
+    assert next_decisions[0].task_id == "b1"
+    assert update_project_deferral_counts(next_snapshot, next_decisions) == {"b": 0}
+
+
+def test_backoff_and_pause_do_not_accrue_project_starvation() -> None:
+    snapshot = make_snapshot(
+        paused_projects=["paused"],
+        ready_tasks=[
+            make_task(
+                "backoff",
+                project_id="slow",
+                retry_not_before=NOW + timedelta(seconds=30),
+                created_order=0,
+            ),
+            make_task("paused", project_id="paused", created_order=1),
+        ],
+        project_consecutive_deferrals={"slow": 4, "paused": 2},
+    )
+    decisions = select_decisions(snapshot)
+    assert update_project_deferral_counts(snapshot, decisions) == {
+        "slow": 4,
+        "paused": 2,
+    }
+
+
+def test_fairness_is_deterministic_under_shuffled_input() -> None:
+    tasks = [
+        make_task(f"busy-{index}", project_id="busy", priority=100, created_order=index)
+        for index in range(5)
+    ] + [make_task("waiting", project_id="waiting", priority=0, created_order=10)]
+    snapshot = make_snapshot(
+        limits=make_limits(max_global_concurrency=1, fairness_starvation_rounds=2),
+        ready_tasks=tasks,
+        project_consecutive_deferrals={"waiting": 2},
+    )
+    expected = select_decisions(snapshot)
+    rng = random.Random(11)
+    for _ in range(10):
+        shuffled = list(tasks)
+        rng.shuffle(shuffled)
+        candidate = snapshot.model_copy(update={"ready_tasks": shuffled})
+        assert select_decisions(candidate) == expected

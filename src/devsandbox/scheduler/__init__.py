@@ -33,7 +33,9 @@ from .scheduler import (
     SchedulerImpl,
     ordered_tasks,
     select_decisions,
+    starving_projects,
     update_deferral_counts,
+    update_project_deferral_counts,
 )
 
 __all__ = [
@@ -64,6 +66,8 @@ __all__ = [
     "ordered_tasks",
     "record_decisions",
     "select_decisions",
+    "starving_projects",
     "sum_resource_profiles",
     "update_deferral_counts",
+    "update_project_deferral_counts",
 ]

@@ -13,7 +13,11 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   [deployment.md](deployment.md#55-container-and-systemd-packaging-startup-migrations).
 - `limits`: `max_global_concurrency` (MVP default 1), `max_project_concurrency`,
   `cpu_headroom_pct`, `mem_headroom_pct`, `disk_min_free_mb`,
-  `pressure_cpu_pct`, `pressure_mem_pct`
+  `pressure_cpu_pct`, `pressure_mem_pct`, `fairness_starvation_rounds`
+  (default `10`; a project with ready work deferred this many consecutive
+  rounds is promoted ahead of non-starving projects; `0` disables the gate).
+  A project spec's `limits.max_concurrency` narrows the per-project quota but
+  can never raise it above `max_project_concurrency`.
 - `retries`: `default_max_retries`, `backoff_base_seconds`, `backoff_max_seconds`
 - `git`: `max_blob_bytes` (default 10 MiB) — collect-time cap on any single
   blob an attempt introduces. Content above the cap is rejected before it
