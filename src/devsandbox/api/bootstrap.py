@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from ..agents.fake import FakeScriptAdapter
 from ..agents.interfaces import AgentAdapter
+from ..agents.models import UsageLimiter
 from ..agents.opencode import OpenCodeAdapter
+from ..agents.usage import SqlUsageStore
 from ..common.types import RepoHandle
 from ..config.policy import SecurityPolicy
 from ..config.settings import DevSandboxSettings, get_settings
@@ -102,7 +104,12 @@ def _docker_ping() -> bool:
         client.close()
 
 
-def _make_agent(sandbox: SandboxManager, settings: DevSandboxSettings) -> AgentAdapter:
+def _make_agent(
+    sandbox: SandboxManager,
+    settings: DevSandboxSettings,
+    *,
+    usage_limiter: UsageLimiter | None = None,
+) -> AgentAdapter:
     """Select the configured agent runtime.
 
     ``fake-script`` is the deterministic runtime used for drills and local
@@ -111,7 +118,7 @@ def _make_agent(sandbox: SandboxManager, settings: DevSandboxSettings) -> AgentA
     """
     runtime = (settings.agent.default_runtime or "opencode").strip().lower()
     if runtime == "opencode":
-        return OpenCodeAdapter(sandbox, settings)
+        return OpenCodeAdapter(sandbox, settings, usage_limiter=usage_limiter)
     if runtime == "fake-script":
         return FakeScriptAdapter(sandbox, settings)
     raise ValueError(
@@ -131,8 +138,10 @@ def build_container(
     session_factory = async_sessionmaker(
         bind=sql_engine, class_=AsyncSession, expire_on_commit=False
     )
+    usage_store = SqlUsageStore(session_factory)
 
     policy = SecurityPolicy(resolved)
+    orchestrator_config = OrchestratorConfig.from_settings(resolved)
     git = GitManagerImpl(resolved, data_root)
     artifacts = ArtifactStore(
         SessionArtifactRepository(session_factory),
@@ -151,7 +160,13 @@ def build_container(
         settings=resolved,
         data_root=data_root,
     )
-    agent = _make_agent(sandbox, resolved)
+    usage_limiter = UsageLimiter(
+        resolved,
+        read_async=usage_store.read,
+        record_async=usage_store.record,
+        window_seconds=orchestrator_config.usage_window_seconds,
+    )
+    agent = _make_agent(sandbox, resolved, usage_limiter=usage_limiter)
     scheduler = DeterministicScheduler(SchedulerConfig.from_settings(resolved))
     monitor = PsutilResourceMonitor(SchedulerConfig.from_settings(resolved), data_root=data_root)
     storage = StorageJanitor(
@@ -172,7 +187,7 @@ def build_container(
         session_factory,
         git=git,
         sandbox=sandbox,
-        config=OrchestratorConfig.from_settings(resolved),
+        config=orchestrator_config,
         storage=storage,
     )
 
@@ -203,8 +218,9 @@ def build_container(
         sandbox=sandbox,
         settings=resolved,
         policy=policy,
-        config=OrchestratorConfig.from_settings(resolved),
+        config=orchestrator_config,
         scheduler_config=SchedulerConfig.from_settings(resolved),
+        usage_limiter=usage_limiter,
         project_service=projects,
         recovery=recovery,
         storage=storage,

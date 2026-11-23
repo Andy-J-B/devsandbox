@@ -817,9 +817,7 @@ async def test_project_spec_concurrency_narrows_scheduler_quota(db_engine, setti
     maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
     clock = FakeClock()
     spec = make_spec()
-    spec = spec.model_copy(
-        update={"limits": spec.limits.model_copy(update={"max_concurrency": 1})}
-    )
+    spec = spec.model_copy(update={"limits": spec.limits.model_copy(update={"max_concurrency": 1})})
     await seed_project(maker, spec, keys=["t-a", "t-b"])
     scheduler = FakeScheduler(
         callback=lambda snapshot: [

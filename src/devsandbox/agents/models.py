@@ -14,11 +14,12 @@ while still tracking tokens.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from ..common.errors import BudgetExceeded, ConfigError
-from ..common.time import utcnow
+from ..common.time import utcnow, window_start
 from ..common.types import ModelConfig, TokenUsage
 from ..config.settings import DevSandboxSettings
 
@@ -52,8 +53,12 @@ class UsageSnapshot:
 
 # A usage store is responsible for reading and recording usage.  It is an
 # injected dependency so the limiter can be unit-tested without a database.
+# The async variants let the production adapter enforce the same budget as the
+# orchestrator without blocking its event loop on a synchronous DB call.
 UsageRead = Callable[[str, str, str], UsageSnapshot]
 UsageRecord = Callable[[str, str, str, int, int], None]
+UsageReadAsync = Callable[[str, str, str], Awaitable[UsageSnapshot]]
+UsageRecordAsync = Callable[[str, str, str, int, int], Awaitable[None]]
 CostRecorder = Callable[[str, ModelConfig, TokenUsage | None], None]
 
 
@@ -63,6 +68,10 @@ class UsageLimiter:
     ``settings.agent.model_budget`` holds max_tokens/max_requests per
     project window.  ``read`` returns current usage for
     ``(project_id, provider, window)``; ``record`` persists new usage.
+
+    Production supplies ``read_async``/``record_async`` backed by
+    ``usage_counters`` (see :class:`devsandbox.agents.usage.SqlUsageStore`).
+    The synchronous defaults remain available for unit tests and local tools.
     """
 
     def __init__(
@@ -71,26 +80,98 @@ class UsageLimiter:
         *,
         read: UsageRead | None = None,
         record: UsageRecord | None = None,
+        read_async: UsageReadAsync | None = None,
+        record_async: UsageRecordAsync | None = None,
         cost_recorder: CostRecorder | None = None,
         window: Callable[[], str] | None = None,
+        window_seconds: int = 86_400,
+        clock: Callable[[], datetime] = utcnow,
     ) -> None:
+        if window_seconds < 1:
+            raise ValueError("window_seconds must be >= 1")
         self._settings = settings
         self._read = read or self._default_read
         self._record = record or self._default_record
+        self._read_async = read_async
+        self._record_async = record_async
         self._cost_recorder = cost_recorder
-        self._window_fn = window or self._default_window
+        self._window_fn = window
+        self._window_seconds = window_seconds
+        self._clock = clock
         self._memory: dict[tuple[str, str, str], UsageSnapshot] = {}
 
     # -- public API -------------------------------------------------------
 
     def check_budget(self, project_id: str, model: ModelConfig) -> None:
         """Raise :class:`BudgetExceeded` if the next run would exceed budget."""
+        self._check_budget(project_id, model, self._read(*self._budget_key(project_id, model)))
+
+    async def acheck_budget(self, project_id: str, model: ModelConfig) -> None:
+        """Async variant of :meth:`check_budget` for DB-backed usage stores."""
+        snapshot = await self._aread(self._budget_key(project_id, model))
+        self._check_budget(project_id, model, snapshot)
+
+    def record_usage(
+        self,
+        project_id: str,
+        model: ModelConfig,
+        token_usage: TokenUsage | None,
+        *,
+        requests: int = 1,
+    ) -> None:
+        """Record usage from a completed run (best effort, no secrets)."""
+        provider = model.provider_id
+        window = self._window()
+        tokens = _total_tokens(token_usage)
+        self._record(project_id, provider, window, tokens, requests)
+        if self._cost_recorder is not None:
+            self._cost_recorder(project_id, model, token_usage)
+
+    async def arecord_usage(
+        self,
+        project_id: str,
+        model: ModelConfig,
+        token_usage: TokenUsage | None,
+        *,
+        requests: int = 1,
+    ) -> None:
+        """Async variant of :meth:`record_usage` for DB-backed usage stores."""
+        provider = model.provider_id
+        window = self._window()
+        tokens = _total_tokens(token_usage)
+        await self._arecord(project_id, provider, window, tokens, requests)
+        if self._cost_recorder is not None:
+            self._cost_recorder(project_id, model, token_usage)
+
+    def snapshot(self, project_id: str, model: ModelConfig) -> UsageSnapshot:
+        """Return current usage for ``project_id``/provider/window."""
+        return self._read(*self._budget_key(project_id, model)).copy()
+
+    async def asnapshot(self, project_id: str, model: ModelConfig) -> UsageSnapshot:
+        """Async variant of :meth:`snapshot`."""
+        return (await self._aread(self._budget_key(project_id, model))).copy()
+
+    def remaining(self, project_id: str, model: ModelConfig) -> tuple[int | None, int | None]:
+        """Return remaining (tokens, requests), with ``None`` meaning unlimited."""
+        return self._remaining_from(self.snapshot(project_id, model))
+
+    async def aremaining(
+        self, project_id: str, model: ModelConfig
+    ) -> tuple[int | None, int | None]:
+        """Async variant of :meth:`remaining`."""
+        return self._remaining_from(await self.asnapshot(project_id, model))
+
+    # -- internals --------------------------------------------------------
+
+    def _budget_key(self, project_id: str, model: ModelConfig) -> tuple[str, str, str]:
+        return (project_id, model.provider_id, self._window())
+
+    def _check_budget(self, project_id: str, model: ModelConfig, snapshot: UsageSnapshot) -> None:
         budget = self._settings.agent.model_budget
         if budget.max_tokens is None and budget.max_requests is None:
             return
         provider = model.provider_id
-        window = self._window_fn()
-        snapshot = self._read(project_id, provider, window)
+        window = self._window()
         if budget.max_tokens is not None and snapshot.tokens >= budget.max_tokens:
             raise BudgetExceeded(
                 f"model token budget exhausted for project {project_id} "
@@ -104,35 +185,27 @@ class UsageLimiter:
                 f"({snapshot.requests}/{budget.max_requests} requests)"
             )
 
-    def record_usage(
-        self,
-        project_id: str,
-        model: ModelConfig,
-        token_usage: TokenUsage | None,
-        *,
-        requests: int = 1,
-    ) -> None:
-        """Record usage from a completed run (best effort, no secrets)."""
-        provider = model.provider_id
-        window = self._window_fn()
-        tokens = _total_tokens(token_usage)
-        self._record(project_id, provider, window, tokens, requests)
-        if self._cost_recorder is not None:
-            self._cost_recorder(project_id, model, token_usage)
-
-    def snapshot(self, project_id: str, model: ModelConfig) -> UsageSnapshot:
-        """Return current usage for ``project_id``/provider/window."""
-        return self._read(project_id, model.provider_id, self._window_fn()).copy()
-
-    def remaining(self, project_id: str, model: ModelConfig) -> tuple[int | None, int | None]:
-        """Return remaining (tokens, requests), with ``None`` meaning unlimited."""
+    def _remaining_from(self, snapshot: UsageSnapshot) -> tuple[int | None, int | None]:
         budget = self._settings.agent.model_budget
-        snapshot = self.snapshot(project_id, model)
         tokens = None if budget.max_tokens is None else max(0, budget.max_tokens - snapshot.tokens)
         requests = (
             None if budget.max_requests is None else max(0, budget.max_requests - snapshot.requests)
         )
         return tokens, requests
+
+    async def _aread(self, key: tuple[str, str, str]) -> UsageSnapshot:
+        if self._read_async is not None:
+            project_id, provider, window = key
+            return await self._read_async(project_id, provider, window)
+        return self._read(*key)
+
+    async def _arecord(
+        self, project_id: str, provider: str, window: str, tokens: int, requests: int
+    ) -> None:
+        if self._record_async is not None:
+            await self._record_async(project_id, provider, window, tokens, requests)
+            return
+        self._record(project_id, provider, window, tokens, requests)
 
     # -- default in-memory store -----------------------------------------
 
@@ -147,10 +220,10 @@ class UsageLimiter:
         snapshot.tokens += tokens
         snapshot.requests += requests
 
-    @staticmethod
-    def _default_window() -> str:
-        # Use a UTC date window so budgets reset daily by default.
-        return utcnow().date().isoformat()
+    def _window(self) -> str:
+        if self._window_fn is not None:
+            return self._window_fn()
+        return window_start(self._clock(), self._window_seconds).isoformat()
 
 
 def model_config_from_settings(settings: DevSandboxSettings) -> ModelConfig:

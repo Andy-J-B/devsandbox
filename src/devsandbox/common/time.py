@@ -29,3 +29,15 @@ def set_utcnow(fn: _ClockFn) -> None:
     """Override the clock (mainly for tests)."""
     global _overridden
     _overridden = fn
+
+
+def window_start(now: datetime, window_seconds: int) -> datetime:
+    """Floor ``now`` to a fixed window boundary (UTC epoch based).
+
+    ``window_seconds`` is clamped to at least one second.  The returned value
+    keeps ``now``'s timezone so it can be stored directly in a timezone-aware
+    database column.
+    """
+    epoch = int(now.timestamp())
+    floored = epoch - (epoch % max(1, window_seconds))
+    return datetime.fromtimestamp(floored, tz=now.tzinfo)

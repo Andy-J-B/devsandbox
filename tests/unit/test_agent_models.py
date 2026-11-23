@@ -135,3 +135,49 @@ def test_injected_store_and_cost_recorder_are_used() -> None:
     assert costs == [("p1", MODEL, usage)]
     with pytest.raises(BudgetExceeded):
         limiter.check_budget("p1", MODEL)
+
+
+async def test_async_store_enforces_the_same_budget() -> None:
+    store: dict[tuple[str, str, str], UsageSnapshot] = {}
+
+    async def read(project_id: str, provider: str, window: str) -> UsageSnapshot:
+        return store.get((project_id, provider, window), UsageSnapshot()).copy()
+
+    async def record(
+        project_id: str, provider: str, window: str, tokens: int, requests: int
+    ) -> None:
+        snapshot = store.setdefault((project_id, provider, window), UsageSnapshot())
+        snapshot.tokens += tokens
+        snapshot.requests += requests
+
+    limiter = UsageLimiter(
+        make_settings(max_tokens=100),
+        read_async=read,
+        record_async=record,
+        window=lambda: "window-async",
+    )
+    await limiter.acheck_budget("p1", MODEL)
+    await limiter.arecord_usage("p1", MODEL, TokenUsage(total_tokens=100))
+    assert await limiter.asnapshot("p1", MODEL) == UsageSnapshot(tokens=100, requests=1)
+    assert await limiter.aremaining("p1", MODEL) == (0, None)
+    with pytest.raises(BudgetExceeded):
+        await limiter.acheck_budget("p1", MODEL)
+
+
+def test_window_seconds_floors_to_a_stable_key() -> None:
+    from datetime import UTC, datetime
+
+    moments = [
+        datetime(2026, 1, 1, 12, 0, 1, tzinfo=UTC),
+        datetime(2026, 1, 1, 12, 59, 59, tzinfo=UTC),
+    ]
+    keys = [
+        UsageLimiter(
+            make_settings(),
+            window_seconds=3600,
+            clock=lambda moment=moment: moment,
+        )._window()
+        for moment in moments
+    ]
+    assert keys[0] == keys[1]
+    assert keys[0].endswith("+00:00")

@@ -20,8 +20,9 @@ from sqlalchemy.exc import DBAPIError, DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..agents.interfaces import AgentAdapter, AgentRunRequest, AgentRunResult
-from ..agents.models import model_config_from_settings
+from ..agents.models import UsageLimiter, model_config_from_settings
 from ..common.errors import (
+    BudgetExceeded,
     ConfigError,
     InvalidTransition,
     OrchestratorAlreadyRunning,
@@ -89,7 +90,6 @@ from .support import (
     repo_handle_for_project,
     spec_from_project,
     task_spec_from_model,
-    usage_window_start,
 )
 
 _log = get_logger("devsandbox.orchestrator")
@@ -229,6 +229,7 @@ class OrchestratorEngine:
         policy: SecurityPolicy | None = None,
         config: OrchestratorConfig | None = None,
         scheduler_config: SchedulerConfig | None = None,
+        usage_limiter: UsageLimiter | None = None,
         classifier: FailureClassifier | None = None,
         replanner: Replanner | None = None,
         project_service: Any | None = None,
@@ -252,6 +253,9 @@ class OrchestratorEngine:
         self.policy = policy or SecurityPolicy(self.settings)
         self.config = config or OrchestratorConfig.from_settings(self.settings)
         self.scheduler_config = scheduler_config or SchedulerConfig.from_settings(self.settings)
+        self.usage = usage_limiter or UsageLimiter(
+            self.settings, window_seconds=self.config.usage_window_seconds
+        )
         self.classifier = classifier or FailureClassifier(
             max_infra_failures=self.config.max_infra_failures,
             repeat_failure_threshold=self.config.repeat_failure_threshold,
@@ -643,6 +647,7 @@ class OrchestratorEngine:
             ready: list[ReadyTask] = []
             running: list[RunningTask] = []
             project_limits: dict[str, int] = {}
+            provider_id = model_config_from_settings(self.settings).provider_id
             for project_id, project in executing.items():
                 if project.active_plan_id is None:
                     continue
@@ -671,6 +676,7 @@ class OrchestratorEngine:
                                 attempt_count=task.attempt_count,
                                 critical_path_length=depths.get(task.id, 0),
                                 consecutive_deferrals=self._deferral_counts.get(task.id, 0),
+                                model_provider=provider_id,
                             )
                         )
                     elif status in _ACTIVE_TASK_STATUSES:
@@ -1836,7 +1842,6 @@ class OrchestratorEngine:
         result: AgentRunResult,
     ) -> None:
         costs = CostRepo(session)
-        now = self._clock()
         if result.token_usage is not None:
             usage = result.token_usage
             amount = usage.total_tokens / 1000.0 * self.config.inference_cost_per_1k_tokens_usd
@@ -1851,13 +1856,7 @@ class OrchestratorEngine:
                     note=f"agent:{self.agent.name}",
                 )
             )
-            await costs.record_usage(
-                project_id=task.project_id,
-                provider=usage.model or self._provider_key(),
-                window_start=usage_window_start(now, self.config.usage_window_seconds),
-                tokens=usage.total_tokens,
-                requests=1,
-            )
+            await self._reconcile_usage(session, task.project_id)
         container_seconds = max(0.0, result.duration_seconds)
         await costs.add_cost(
             CostEntryModel(
@@ -1869,6 +1868,29 @@ class OrchestratorEngine:
                 units_json={"container_seconds": container_seconds},
                 note="agent-container",
             )
+        )
+
+    async def _reconcile_usage(self, session: AsyncSession, project_id: str) -> None:
+        """Compare the usage counters with the inference cost ledger.
+
+        Adapter usage recording and the orchestrator's cost entry are written
+        by different components.  A mismatch means budget enforcement and
+        reporting disagree, so surface it as an operational event instead of
+        silently trusting either side.
+        """
+        costs = CostRepo(session)
+        counted = await costs.usage_totals(project_id)
+        inferred = await costs.inference_usage_totals(project_id, note_prefix="agent:")
+        if counted == inferred:
+            return
+        await events.emit_event(
+            session,
+            project_id=project_id,
+            event_type=events.USAGE_MISMATCH,
+            payload={
+                "usage_counters": {"tokens": counted[0], "requests": counted[1]},
+                "inference_ledger": {"tokens": inferred[0], "requests": inferred[1]},
+            },
         )
 
     async def _persist_validation(
@@ -2055,47 +2077,45 @@ class OrchestratorEngine:
     async def _budget_exceeded(
         self, project_id: str, *, session: AsyncSession | None = None
     ) -> bool:
-        budget = self.settings.agent.model_budget
-
-        async def check(active: AsyncSession) -> bool:
-            tokens, requests = await CostRepo(active).usage_totals(project_id)
-            if budget.max_tokens is not None and tokens >= budget.max_tokens:
-                return True
-            return budget.max_requests is not None and requests >= budget.max_requests
-
-        if session is not None:
-            return await check(session)
-        async with self._session_factory() as new_session:
-            return await check(new_session)
+        del session  # budget is owned by the shared usage limiter
+        model = model_config_from_settings(self.settings)
+        try:
+            await self.usage.acheck_budget(project_id, model)
+        except BudgetExceeded:
+            return True
+        return False
 
     async def _model_budget(
         self, session: AsyncSession, project_ids: list[str]
     ) -> dict[str, ModelBudgetState]:
+        del session
         budget = self.settings.agent.model_budget
         if budget.max_tokens is None and budget.max_requests is None:
             return {}
-        used_tokens = 0
-        used_requests = 0
-        costs = CostRepo(session)
+        model = model_config_from_settings(self.settings)
+        # Budgets are per project.  The scheduler sees one provider-wide value,
+        # so use the most constrained project to avoid over-admitting work.
+        remaining_tokens: int | None = None
+        remaining_requests: int | None = None
         for project_id in project_ids:
-            tokens, requests = await costs.usage_totals(project_id)
-            used_tokens = max(used_tokens, tokens)
-            used_requests = max(used_requests, requests)
+            tokens, requests = await self.usage.aremaining(project_id, model)
+            if tokens is not None:
+                remaining_tokens = (
+                    tokens if remaining_tokens is None else min(remaining_tokens, tokens)
+                )
+            if requests is not None:
+                remaining_requests = (
+                    requests if remaining_requests is None else min(remaining_requests, requests)
+                )
         return {
             self._provider_key(): ModelBudgetState(
-                remaining_tokens=(
-                    None if budget.max_tokens is None else max(0, budget.max_tokens - used_tokens)
-                ),
-                remaining_requests=(
-                    None
-                    if budget.max_requests is None
-                    else max(0, budget.max_requests - used_requests)
-                ),
+                remaining_tokens=remaining_tokens,
+                remaining_requests=remaining_requests,
             )
         }
 
     def _provider_key(self) -> str:
-        return self.settings.agent.default_model or "opencode"
+        return model_config_from_settings(self.settings).provider_id
 
     async def _has_work(self) -> bool:
         if self._running:

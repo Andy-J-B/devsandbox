@@ -7,13 +7,8 @@ from datetime import datetime
 from pydantic import ValidationError
 
 from ..common.errors import ConfigError
-from ..common.types import (
-    CheckSpec,
-    RepoHandle,
-    RepoSource,
-    ResourceProfile,
-    TaskSpec,
-)
+from ..common.time import window_start
+from ..common.types import CheckSpec, RepoHandle, RepoSource, ResourceProfile, TaskSpec
 from ..db.models import ProjectModel, TaskModel
 from ..spec.models import ProjectSpec, load_spec
 
@@ -79,10 +74,8 @@ def project_checks(spec: ProjectSpec) -> list[CheckSpec]:
 
 
 def usage_window_start(now: datetime, window_seconds: int) -> datetime:
-    """Floor ``now`` to a fixed window boundary (UTC epoch based)."""
-    epoch = int(now.timestamp())
-    floored = epoch - (epoch % max(1, window_seconds))
-    return datetime.fromtimestamp(floored, tz=now.tzinfo)
+    """Backwards-compatible alias for :func:`devsandbox.common.time.window_start`."""
+    return window_start(now, window_seconds)
 
 
 __all__ = [

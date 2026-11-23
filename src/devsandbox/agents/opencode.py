@@ -150,7 +150,7 @@ class OpenCodeAdapter:
         project_id = resolve_project_id(req)
         budget_key = project_id or req.task.id
         # Budget is checked before any side effect (including writing files).
-        self._usage.check_budget(budget_key, req.model)
+        await self._usage.acheck_budget(budget_key, req.model)
 
         workspace_path = Path(req.workspace.path).resolve()
         prompt = build_prompt(req)
@@ -227,7 +227,7 @@ class OpenCodeAdapter:
 
         summary = _extract_summary(stdout, stderr)
         token_usage = parse_token_usage(stdout, model_reference=req.model.reference)
-        self._usage.record_usage(budget_key, req.model, token_usage)
+        await self._usage.arecord_usage(budget_key, req.model, token_usage)
 
         return AgentRunResult(
             exit_status=map_exit_status(result),

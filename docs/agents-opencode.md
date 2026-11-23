@@ -252,6 +252,15 @@ launch". Usage/cost persistence is injected (`read`, `record`,
 `cost_recorder`) so plan 08 can wire `usage_counters` and
 `cost_entries kind="inference"`.
 
+Production wiring uses `SqlUsageStore` (`agents/usage.py`) with the async
+`read_async`/`record_async` callbacks, so the adapter checks the same
+`usage_counters` rows as the scheduler and API. The window is a fixed epoch
+bucket (`OrchestratorConfig.usage_window_seconds`, default one hour). The
+orchestrator writes the inference cost entry and compares the ledger totals
+with `usage_counters`; a divergence emits a `USAGE_MISMATCH` audit event
+instead of silently trusting either side. Usage is recorded exactly once, by
+the adapter that produced the tokens.
+
 ## Secrets
 
 `SecretProvider.resolve` accepts:
