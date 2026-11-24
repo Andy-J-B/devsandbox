@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import random
 import re
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, cast
 
 import httpx
 from pydantic import SecretStr, ValidationError
 
 from ..common.errors import LLMError, PlannerError
+from ..common.rate_limit import NoopRateLimiter, TokenBucketRateLimiter
 from ..common.redaction import redact
 from ..common.types import (
     ProjectContext,
@@ -339,7 +345,14 @@ class LLMPlanner:
 
 
 class OpenAICompatibleClient:
-    """Small async client for an OpenAI-compatible ``/chat/completions`` API."""
+    """Small async client for an OpenAI-compatible ``/chat/completions`` API.
+
+    Calls are gated by an optional provider token bucket and retried with
+    exponential backoff on transient failures (timeouts, transport errors,
+    HTTP 408/429/5xx).  ``Retry-After`` is honoured when present.  Other 4xx
+    responses fail immediately because retrying a malformed request or a bad
+    key only wastes the provider budget.
+    """
 
     def __init__(
         self,
@@ -349,12 +362,32 @@ class OpenAICompatibleClient:
         api_key: SecretStr | None = None,
         timeout_seconds: float = 60.0,
         client: httpx.AsyncClient | None = None,
+        rate_limiter: TokenBucketRateLimiter | NoopRateLimiter | None = None,
+        max_retries: int = 3,
+        backoff_base_seconds: float = 1.0,
+        backoff_max_seconds: float = 30.0,
+        jitter: Callable[[], float] = random.random,
+        jitter_ratio: float = 0.1,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
+        if max_retries < 0:
+            raise ValueError("max_retries must be >= 0")
+        if backoff_base_seconds < 0 or backoff_max_seconds < 0:
+            raise ValueError("backoff values must be >= 0")
+        if not 0.0 <= jitter_ratio <= 1.0:
+            raise ValueError("jitter_ratio must be between 0 and 1")
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key = api_key
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
+        self._rate_limiter = rate_limiter or NoopRateLimiter()
+        self._max_retries = max_retries
+        self._backoff_base_seconds = backoff_base_seconds
+        self._backoff_max_seconds = backoff_max_seconds
+        self._jitter = jitter
+        self._jitter_ratio = jitter_ratio
+        self._sleep = sleep
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         """Call the chat completions endpoint and normalise the response."""
@@ -370,17 +403,8 @@ class OpenAICompatibleClient:
         }
         if request.max_tokens is not None:
             payload["max_tokens"] = request.max_tokens
-        try:
-            response = await self._client.post(
-                f"{self._base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise LLMError(f"LLM request failed: {exc}") from exc
 
+        data = await self._post_with_retries(headers=headers, payload=payload)
         choices = data.get("choices")
         if not isinstance(choices, list) or not choices:
             raise LLMError("LLM response did not contain any choices")
@@ -403,10 +427,94 @@ class OpenAICompatibleClient:
             )
         return LLMResponse(content=content, token_usage=usage)
 
+    async def _post_with_retries(
+        self, *, headers: dict[str, str], payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        last_error = "LLM request failed"
+        for attempt in range(self._max_retries + 1):
+            await self._rate_limiter.acquire()
+            try:
+                response = await self._client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_error = f"LLM request failed: {exc}"
+                if attempt < self._max_retries:
+                    await self._sleep(self._backoff_delay(attempt))
+                    continue
+                raise LLMError(last_error) from exc
+            except ValueError as exc:
+                raise LLMError(f"LLM request failed: {exc}") from exc
+
+            if self._retryable_status(response.status_code):
+                last_error = (
+                    f"LLM request failed with HTTP {response.status_code}: "
+                    f"{redact(response.text[:500])}"
+                )
+                if attempt < self._max_retries:
+                    await self._sleep(
+                        self._retry_delay(attempt, response.headers.get("Retry-After"))
+                    )
+                    continue
+                raise LLMError(last_error)
+
+            try:
+                response.raise_for_status()
+                parsed = response.json()
+            except httpx.HTTPStatusError as exc:
+                raise LLMError(
+                    f"LLM request failed with HTTP {exc.response.status_code}: "
+                    f"{redact(exc.response.text[:500])}"
+                ) from exc
+            except ValueError as exc:
+                raise LLMError(f"LLM response was not valid JSON: {exc}") from exc
+            if not isinstance(parsed, dict):
+                raise LLMError("LLM response JSON must be an object")
+            return parsed
+        raise LLMError(last_error)
+
+    @staticmethod
+    def _retryable_status(status: int) -> bool:
+        return status in {408, 425, 429} or 500 <= status < 600
+
+    def _backoff_delay(self, attempt: int) -> float:
+        delay = min(self._backoff_max_seconds, self._backoff_base_seconds * (2**attempt))
+        if delay <= 0:
+            return 0.0
+        return float(delay + delay * self._jitter() * self._jitter_ratio)
+
+    def _retry_delay(self, attempt: int, retry_after: str | None) -> float:
+        server_delay = _parse_retry_after(retry_after)
+        if server_delay is not None:
+            return min(self._backoff_max_seconds, max(0.0, server_delay))
+        return self._backoff_delay(attempt)
+
     async def aclose(self) -> None:
         """Close the underlying HTTP client when this instance owns it."""
         if self._owns_client:
             await self._client.aclose()
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a ``Retry-After`` header (seconds or HTTP date)."""
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
 
 
 __all__ = ["LLMPlanner", "OpenAICompatibleClient"]

@@ -285,6 +285,35 @@ async def test_usage_is_recorded_after_run(tmp_path: Path) -> None:
     assert limiter.snapshot("proj-1", make_request(workspace).model).requests == 1
 
 
+async def test_provider_rate_limiter_is_acquired_before_the_container(tmp_path: Path) -> None:
+    class CountingLimiter:
+        enabled = True
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def acquire(self, tokens: float = 1.0) -> None:
+            del tokens
+            self.calls += 1
+
+    workspace, _ = make_workspace(tmp_path)
+    settings = make_settings()
+    sandbox = FakeSandboxManager()
+    limiter = CountingLimiter()
+    adapter = OpenCodeAdapter(
+        sandbox,
+        settings,
+        usage_limiter=UsageLimiter(settings),
+        rate_limiter=limiter,  # type: ignore[arg-type]
+    )
+    sandbox.queue_result(sandbox_result(*write_logs(tmp_path)))
+
+    await adapter.run(make_request(workspace))
+
+    assert limiter.calls == 1
+    assert len(sandbox.calls) == 1
+
+
 async def test_policy_clamps_resources_and_network(tmp_path: Path) -> None:
     workspace, _ = make_workspace(tmp_path)
     adapter, sandbox = _adapter(tmp_path, settings=make_settings(allow_network_default=False))

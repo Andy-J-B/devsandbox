@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from ..common.errors import ConfigError, SandboxError
+from ..common.rate_limit import NoopRateLimiter, TokenBucketRateLimiter
 from ..common.time import utcnow
 from ..common.types import AttemptId, ModelConfig, NetworkPolicy, TokenUsage
 from ..config.policy import SecurityPolicy
@@ -126,6 +127,7 @@ class OpenCodeAdapter:
         image: str | None = None,
         secret_provider: SecretProvider | None = None,
         usage_limiter: UsageLimiter | None = None,
+        rate_limiter: TokenBucketRateLimiter | NoopRateLimiter | None = None,
         prompt_dir: str | Path | None = None,
         checkpoint: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
@@ -135,6 +137,7 @@ class OpenCodeAdapter:
         self._image = image or settings.agent.image
         self._secrets = secret_provider or SecretProvider(settings)
         self._usage = usage_limiter or UsageLimiter(settings)
+        self._rate_limiter = rate_limiter or _rate_limiter_from_settings(settings)
         self._prompt_dir = Path(prompt_dir) if prompt_dir is not None else None
         self._checkpoint = checkpoint
 
@@ -151,6 +154,9 @@ class OpenCodeAdapter:
         budget_key = project_id or req.task.id
         # Budget is checked before any side effect (including writing files).
         await self._usage.acheck_budget(budget_key, req.model)
+        # Throttle provider launches without holding a scheduler slot while
+        # waiting; the bucket is shared by every attempt in this process.
+        await self._rate_limiter.acquire()
 
         workspace_path = Path(req.workspace.path).resolve()
         prompt = build_prompt(req)
@@ -384,6 +390,15 @@ def _as_int(value: Any) -> int:
     if isinstance(value, float):
         return int(value)
     return 0
+
+
+def _rate_limiter_from_settings(
+    settings: DevSandboxSettings,
+) -> TokenBucketRateLimiter | NoopRateLimiter:
+    rate = settings.agent.rate_limit_per_minute
+    if rate <= 0:
+        return NoopRateLimiter()
+    return TokenBucketRateLimiter(rate, burst=settings.agent.rate_limit_burst)
 
 
 __all__ = ["DEFAULT_AGENT_IMAGE", "OpenCodeAdapter", "parse_token_usage", "render_opencode_config"]

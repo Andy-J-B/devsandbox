@@ -286,3 +286,184 @@ async def test_openai_compatible_client_parses_response() -> None:
     assert response.content == "hello"
     assert response.token_usage is not None
     assert response.token_usage.total_tokens == 5
+
+
+def _success() -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        },
+    )
+
+
+async def _complete_with(client: OpenAICompatibleClient) -> str:
+    response = await client.complete(
+        LLMRequest(model="test", messages=[LLMMessage(role="user", content="hi")])
+    )
+    return response.content
+
+
+async def test_client_retries_429_and_honours_retry_after() -> None:
+    calls: list[int] = []
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"Retry-After": "0.5"})
+        return _success()
+
+    async def sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = OpenAICompatibleClient(
+            base_url="http://example.test/v1",
+            model="test",
+            client=http,
+            max_retries=2,
+            sleep=sleep,
+            jitter=lambda: 0.0,
+        )
+        assert await _complete_with(client) == "ok"
+
+    assert len(calls) == 2
+    assert sleeps == [pytest.approx(0.5)]
+
+
+async def test_client_retries_5xx_with_exponential_backoff() -> None:
+    calls: list[int] = []
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) < 3:
+            return httpx.Response(503)
+        return _success()
+
+    async def sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = OpenAICompatibleClient(
+            base_url="http://example.test/v1",
+            model="test",
+            client=http,
+            max_retries=2,
+            backoff_base_seconds=1.0,
+            backoff_max_seconds=10.0,
+            jitter=lambda: 0.0,
+            sleep=sleep,
+        )
+        assert await _complete_with(client) == "ok"
+
+    assert len(calls) == 3
+    assert sleeps == [pytest.approx(1.0), pytest.approx(2.0)]
+
+
+async def test_client_does_not_retry_non_retryable_4xx() -> None:
+    calls: list[int] = []
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(400, json={"error": "bad request"})
+
+    async def sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = OpenAICompatibleClient(
+            base_url="http://example.test/v1",
+            model="test",
+            client=http,
+            max_retries=3,
+            sleep=sleep,
+        )
+        with pytest.raises(LLMError, match="HTTP 400"):
+            await _complete_with(client)
+
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+async def test_client_retries_transport_errors_then_succeeds() -> None:
+    calls: list[int] = []
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            raise httpx.ConnectError("connection refused", request=request)
+        return _success()
+
+    async def sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = OpenAICompatibleClient(
+            base_url="http://example.test/v1",
+            model="test",
+            client=http,
+            max_retries=1,
+            jitter=lambda: 0.0,
+            sleep=sleep,
+        )
+        assert await _complete_with(client) == "ok"
+
+    assert len(calls) == 2
+    assert sleeps == [pytest.approx(1.0)]
+
+
+async def test_client_raises_after_retry_budget_is_exhausted() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(500)
+
+    async def sleep(delay: float) -> None:
+        return None
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = OpenAICompatibleClient(
+            base_url="http://example.test/v1",
+            model="test",
+            client=http,
+            max_retries=2,
+            sleep=sleep,
+        )
+        with pytest.raises(LLMError, match="HTTP 500"):
+            await _complete_with(client)
+
+    assert len(calls) == 3
+
+
+async def test_client_acquires_the_provider_rate_limiter() -> None:
+    class CountingLimiter:
+        enabled = True
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def acquire(self, tokens: float = 1.0) -> None:
+            del tokens
+            self.calls += 1
+
+    limiter = CountingLimiter()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _success()
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = OpenAICompatibleClient(
+            base_url="http://example.test/v1",
+            model="test",
+            client=http,
+            rate_limiter=limiter,  # type: ignore[arg-type]
+        )
+        await _complete_with(client)
+
+    assert limiter.calls == 1

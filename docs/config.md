@@ -18,7 +18,11 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   rounds is promoted ahead of non-starving projects; `0` disables the gate).
   A project spec's `limits.max_concurrency` narrows the per-project quota but
   can never raise it above `max_project_concurrency`.
-- `retries`: `default_max_retries`, `backoff_base_seconds`, `backoff_max_seconds`
+- `retries`: `default_max_retries`, `backoff_base_seconds`, `backoff_max_seconds`,
+  plus the provider-call policy `model_call_max_retries`,
+  `model_call_backoff_base_seconds`, `model_call_backoff_max_seconds`
+  (retries apply only to timeouts, transport errors, HTTP 408/425/429/5xx;
+  `Retry-After` is honoured).
 - `git`: `max_blob_bytes` (default 10 MiB) — collect-time cap on any single
   blob an attempt introduces. Content above the cap is rejected before it
   reaches the canonical mirror, integration, validation, or reports, and is
@@ -54,7 +58,8 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
   There are deliberately no uvicorn certificate/key settings: TLS terminates at
   the shipped reverse-proxy example or your ingress controller.
 - `agent`: `default_runtime`, `default_provider`, `default_model`, `image`,
-  `base_url`, `secret_ref`, `model_budget`
+  `base_url`, `secret_ref`, `model_budget`, `rate_limit_per_minute`,
+  `rate_limit_burst`
   - `default_runtime` selects the adapter: `opencode` (default) or
     `fake-script` (deterministic, no model; used for drills and local
     end-to-end checks). Unknown values fail at startup instead of silently
@@ -68,6 +73,11 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
     implicit model fallback: if it is unset, the OpenCode adapter refuses to
     launch and records a clear configuration error instead of sending a
     nonexistent `opencode/opencode` model id to the provider.
+  - `rate_limit_per_minute` / `rate_limit_burst` throttle agent launches with a
+    process-local token bucket before a container starts. `0` (default)
+    disables throttling. The provider may still throttle requests inside
+    OpenCode; the planner's `OpenAICompatibleClient` has its own token bucket
+    and retry policy for direct model calls.
   - `base_url` points an OpenAI-compatible endpoint at a custom server; for a
     local Ollama instance use `http://host.docker.internal:11434/v1` on Docker
     Desktop (or the host bridge address on Linux).

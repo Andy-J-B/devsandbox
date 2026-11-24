@@ -261,6 +261,15 @@ with `usage_counters`; a divergence emits a `USAGE_MISMATCH` audit event
 instead of silently trusting either side. Usage is recorded exactly once, by
 the adapter that produced the tokens.
 
+Provider throttling: `agent.rate_limit_per_minute` and
+`agent.rate_limit_burst` gate agent launches with a process-local token bucket
+(`common/rate_limit.py`) before the container starts. The direct
+OpenAI-compatible planner client also has a token bucket plus bounded
+exponential backoff for timeouts, transport errors, and HTTP 408/425/429/5xx;
+it honours `Retry-After` and never retries other 4xx responses. OpenCode
+performs its own request-level retries inside the sandbox, so the adapter
+throttles launches rather than individual tool/model calls.
+
 ## Secrets
 
 `SecretProvider.resolve` accepts:

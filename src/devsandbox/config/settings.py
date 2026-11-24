@@ -67,15 +67,25 @@ class RetriesConfig(BaseModel):
     default_max_retries: int = 2
     backoff_base_seconds: float = 1.0
     backoff_max_seconds: float = 30.0
+    # Provider model calls use a separate bounded retry policy.  Retries apply
+    # only to transient failures (timeouts, transport errors, HTTP 429/5xx).
+    model_call_max_retries: int = 3
+    model_call_backoff_base_seconds: float = 1.0
+    model_call_backoff_max_seconds: float = 30.0
 
-    @field_validator("default_max_retries")
+    @field_validator("default_max_retries", "model_call_max_retries")
     @classmethod
     def _retries_non_negative(cls, value: int) -> int:
         if value < 0:
-            raise ValueError("default_max_retries must be >= 0")
+            raise ValueError("retry counts must be >= 0")
         return value
 
-    @field_validator("backoff_base_seconds", "backoff_max_seconds")
+    @field_validator(
+        "backoff_base_seconds",
+        "backoff_max_seconds",
+        "model_call_backoff_base_seconds",
+        "model_call_backoff_max_seconds",
+    )
     @classmethod
     def _backoff_non_negative(cls, value: float) -> float:
         if value < 0.0:
@@ -200,6 +210,25 @@ class AgentConfig(BaseModel):
     base_url: str | None = None
     secret_ref: str | None = None
     model_budget: ModelBudget = Field(default_factory=ModelBudget)
+    # Process-wide provider launch throttle.  ``0`` disables it.  This gates
+    # agent attempts before the container starts; the provider may still
+    # throttle individual requests inside OpenCode.
+    rate_limit_per_minute: float = 0.0
+    rate_limit_burst: int = 1
+
+    @field_validator("rate_limit_per_minute")
+    @classmethod
+    def _rate_non_negative(cls, value: float) -> float:
+        if value < 0.0:
+            raise ValueError("rate_limit_per_minute must be >= 0")
+        return value
+
+    @field_validator("rate_limit_burst")
+    @classmethod
+    def _burst_positive(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("rate_limit_burst must be >= 1")
+        return value
 
 
 class PlannerConfig(BaseModel):
