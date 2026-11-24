@@ -40,7 +40,7 @@ validation:
 limits:                     # may only NARROW global policy
   max_retries: 2
   task_timeout_seconds: 1800
-  max_concurrency: 1
+  max_concurrency: 1        # optional; omitted means inherit max_project_concurrency
 agent:
   runtime: opencode
   model: null               # currently informational; runtime/model come from settings.agent

@@ -34,8 +34,9 @@ systemd unit and container image both rely on this behavior; see
 
 ## Backup and restore
 
-Backups use `pg_dump --format=custom`; restore uses `pg_restore`. Install the
-PostgreSQL client tools on the host that runs the command:
+Backups use `pg_dump --format=custom`; restore uses `pg_restore` and streams
+its SQL through `psql`. Install the PostgreSQL client tools on the host that
+runs the command:
 
 ```bash
 # Stop devsandbox serve first; restore is an offline operation.
@@ -48,6 +49,11 @@ devsandbox db restore \
   --from /var/backups/devsandbox-2026-11-20.dump \
   --yes
 ```
+
+Streaming through `psql` lets the restore drop the `SET transaction_timeout`
+header that `pg_restore` 17 and newer always emit. Older servers reject that
+parameter, so a newer client can still restore into them. The statement only
+disables a timeout (the default) and is removed before it reaches the server.
 
 Each dump gets a `<dump>.json` sidecar containing the creation time, database
 coordinates (no password), Alembic revision, SHA-256 digest, and byte size.

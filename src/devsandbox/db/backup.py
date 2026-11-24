@@ -16,13 +16,15 @@ control plane can race active orchestrator connections, so stop
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import os
 import secrets
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable, Iterator, Mapping, Sequence
+import threading
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -221,6 +223,153 @@ def _scrubbed(text_value: str, password: str | None) -> str:
     return scrubbed
 
 
+_TRANSACTION_TIMEOUT_SET = "SET transaction_timeout = 0;"
+_IDLE_TIMEOUT_SET = "SET idle_in_transaction_session_timeout = 0;"
+
+
+def _restore_sql(lines: Iterable[str]) -> Iterator[str]:
+    """Yield restore SQL with settings unsupported by older servers removed.
+
+    ``pg_restore`` 17 and newer unconditionally writes ``SET transaction_timeout
+    = 0;`` into its fixed output header.  A server older than 17 does not know
+    that parameter and aborts the restore.  The parameter's default is already
+    0 (disabled), so dropping the statement is safe when the client is newer
+    than the server.
+
+    Only the fixed header occurrence is removed: it directly follows the
+    idle-timeout statement.  Tracking COPY data and arbitrary SQL bodies means a
+    table value or function body that happens to contain the same text is kept.
+    """
+    previous = ""
+    in_copy = False
+    for line in lines:
+        current = line.rstrip("\r\n")
+        if in_copy:
+            yield line
+            if current == "\\.":
+                in_copy = False
+                previous = current
+            continue
+        if current.startswith("COPY ") and current.endswith(" FROM stdin;"):
+            in_copy = True
+            yield line
+            previous = current
+            continue
+        if current == _TRANSACTION_TIMEOUT_SET and previous == _IDLE_TIMEOUT_SET:
+            previous = current
+            continue
+        yield line
+        previous = current
+
+
+def _run_restore(
+    args: Sequence[str],
+    *,
+    psql: str,
+    env: Mapping[str, str],
+    database: str,
+    password: str | None,
+) -> None:
+    """Stream ``pg_restore`` SQL through ``psql``, filtering fixed state.
+
+    Restoring through SQL (instead of letting ``pg_restore`` execute directly)
+    lets us drop client-generated statements the target server does not know.
+    ``psql`` runs with ``ON_ERROR_STOP`` so the first real error still fails the
+    restore, matching ``pg_restore --exit-on-error``.
+    """
+    psql_args = [
+        psql,
+        "--no-psqlrc",
+        "--quiet",
+        "--set=ON_ERROR_STOP=1",
+        "--dbname",
+        database,
+    ]
+    # stderr goes to temporary files, not pipes: neither child can block on a
+    # full pipe while the other one is still running.
+    with (
+        tempfile.TemporaryFile(mode="w+b") as restore_err,
+        tempfile.TemporaryFile(mode="w+b") as psql_err,
+    ):
+        try:
+            restore = subprocess.Popen(
+                list(args),
+                env=dict(env),
+                stdout=subprocess.PIPE,
+                stderr=restore_err,
+                text=True,
+            )
+        except OSError as exc:
+            raise DatabaseBackupError(f"{Path(args[0]).name} failed to start: {exc}") from exc
+        assert restore.stdout is not None
+        try:
+            apply = subprocess.Popen(
+                psql_args,
+                env=dict(env),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=psql_err,
+                text=True,
+            )
+        except OSError as exc:
+            restore.kill()
+            restore.communicate()
+            raise DatabaseBackupError(f"{Path(psql).name} failed to start: {exc}") from exc
+        assert apply.stdin is not None
+        restore_stdout = restore.stdout
+        apply_stdin = apply.stdin
+
+        def _feed() -> None:
+            try:
+                for line in _restore_sql(restore_stdout):
+                    apply_stdin.write(line)
+                apply_stdin.flush()
+            except (BrokenPipeError, OSError):
+                # psql stopped reading (usually because it hit an error); the
+                # process status below carries the real diagnostic.
+                pass
+            finally:
+                with contextlib.suppress(OSError):
+                    restore_stdout.close()
+                with contextlib.suppress(OSError):
+                    apply_stdin.close()
+
+        feeder = threading.Thread(target=_feed, name="devsandbox-restore-feed", daemon=True)
+        feeder.start()
+        try:
+            restore_status = restore.wait(timeout=_TOOL_TIMEOUT_SECONDS)
+            apply_status = apply.wait(timeout=_TOOL_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            for process in (restore, apply):
+                if process.poll() is None:
+                    process.kill()
+            restore.wait()
+            apply.wait()
+            raise DatabaseBackupError(
+                f"{Path(args[0]).name} timed out after {_TOOL_TIMEOUT_SECONDS} seconds"
+            ) from exc
+        feeder.join(timeout=5)
+        restore_err.seek(0)
+        restore_detail = restore_err.read().decode("utf-8", errors="replace")
+        psql_err.seek(0)
+        psql_detail = psql_err.read().decode("utf-8", errors="replace")
+
+    # psql owns execution: if it failed, its message is the useful one.  A
+    # non-zero pg_restore status with a clean psql usually means the archive
+    # could not be read.
+    if apply_status != 0:
+        detail = (psql_detail or restore_detail or "no diagnostic output").strip()
+        raise DatabaseBackupError(
+            f"{Path(psql).name} exited with status {apply_status}: {_scrubbed(detail, password)}"
+        )
+    if restore_status != 0:
+        detail = (restore_detail or psql_detail or "no diagnostic output").strip()
+        raise DatabaseBackupError(
+            f"{Path(args[0]).name} exited with status {restore_status}: "
+            f"{_scrubbed(detail, password)}"
+        )
+
+
 def _run_tool(
     args: Sequence[str],
     *,
@@ -373,10 +522,10 @@ async def restore_database(
             )
 
     restore = _tool("pg_restore")
+    psql = _tool("psql")
     args = [
         restore,
-        "--dbname",
-        target.database,
+        "--file=-",
         "--no-owner",
         "--no-acl",
         "--exit-on-error",
@@ -386,7 +535,14 @@ async def restore_database(
     args.append(str(dump))
     with _passfile(target, password) as passfile:
         env = _postgres_env(target, passfile)
-        await asyncio.to_thread(_run_tool, args, env=env, password=password)
+        await asyncio.to_thread(
+            _run_restore,
+            args,
+            psql=psql,
+            env=env,
+            database=target.database,
+            password=password,
+        )
     restored_at = clock()
     return RestoreResult(
         source=str(dump),

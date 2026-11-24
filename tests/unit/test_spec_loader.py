@@ -47,6 +47,16 @@ def test_load_spec_accepts_example() -> None:
     assert spec.mode == "supervised"
 
 
+def test_omitted_max_concurrency_inherits_operator_policy() -> None:
+    spec = load_spec(EXAMPLE_SPEC.replace("  max_concurrency: 1\n", ""))
+    assert spec.limits.max_concurrency is None
+
+
+def test_max_concurrency_must_be_positive_when_set() -> None:
+    with pytest.raises(SpecError):
+        load_spec(EXAMPLE_SPEC.replace("  max_concurrency: 1", "  max_concurrency: 0"))
+
+
 def test_spec_hash_is_stable() -> None:
     first = load_spec(EXAMPLE_SPEC)
     second = load_spec(EXAMPLE_SPEC)

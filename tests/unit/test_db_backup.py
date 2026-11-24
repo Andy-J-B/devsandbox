@@ -126,6 +126,70 @@ def test_restore_missing_source_is_rejected(tmp_path: Path) -> None:
         asyncio.run(restore_database(URL, tmp_path / "missing.dump"))
 
 
+def test_restore_sql_drops_newer_client_transaction_timeout_header() -> None:
+    lines = [
+        "SET statement_timeout = 0;\n",
+        "SET lock_timeout = 0;\n",
+        "SET idle_in_transaction_session_timeout = 0;\n",
+        "SET transaction_timeout = 0;\n",
+        "SET client_encoding = 'UTF8';\n",
+    ]
+
+    assert list(backup_module._restore_sql(lines)) == [
+        "SET statement_timeout = 0;\n",
+        "SET lock_timeout = 0;\n",
+        "SET idle_in_transaction_session_timeout = 0;\n",
+        "SET client_encoding = 'UTF8';\n",
+    ]
+
+
+def test_restore_sql_keeps_copy_data_and_unrelated_statements() -> None:
+    lines = [
+        "COPY public.log (message) FROM stdin;\n",
+        "SET idle_in_transaction_session_timeout = 0;\n",
+        "SET transaction_timeout = 0;\n",
+        "\\.\n",
+        "SELECT 1;\n",
+        "SET transaction_timeout = 0;\n",
+    ]
+
+    assert list(backup_module._restore_sql(lines)) == lines
+
+
+async def test_restore_streams_through_psql(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dump = tmp_path / "backup.dump"
+    dump.write_bytes(b"custom dump")
+    observed: dict[str, object] = {}
+
+    def _fake_restore(
+        args: list[str],
+        *,
+        psql: str,
+        env: dict[str, str],
+        database: str,
+        password: str | None = None,
+    ) -> None:
+        observed.update(args=list(args), psql=psql, database=database, password=password)
+
+    monkeypatch.setattr(backup_module, "_tool", lambda name: f"/fake/{name}")
+    monkeypatch.setattr(backup_module, "_run_restore", _fake_restore)
+
+    result = await restore_database(URL, dump)
+
+    assert result.database == "devsandbox"
+    assert result.cleaned is True
+    assert observed["psql"] == "/fake/psql"
+    args = observed["args"]
+    assert isinstance(args, list)
+    assert args[0] == "/fake/pg_restore"
+    assert "--file=-" in args
+    assert args[-1] == str(dump)
+    assert observed["database"] == "devsandbox"
+    assert observed["password"] == "topsecret"
+
+
 def test_restore_rejects_checksum_mismatch(tmp_path: Path) -> None:
     import asyncio
 

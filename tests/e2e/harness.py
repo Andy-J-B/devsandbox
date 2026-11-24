@@ -208,7 +208,10 @@ def make_spec(
         limits=LimitsSpec(
             max_retries=max_retries,
             task_timeout_seconds=task_timeout_seconds,
-            max_concurrency=1,
+            # Omit the quota so the spec inherits the operator's configured
+            # max_project_concurrency. Tests that need a narrower share set it
+            # explicitly.
+            max_concurrency=None,
         ),
     )
 

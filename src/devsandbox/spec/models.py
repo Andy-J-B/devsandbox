@@ -39,7 +39,9 @@ class LimitsSpec(BaseModel):
 
     max_retries: int = 2
     task_timeout_seconds: int = 1800
-    max_concurrency: int = 1
+    # ``None`` means "inherit the operator's max_project_concurrency"; a value
+    # may only narrow it (the scheduler takes the minimum).
+    max_concurrency: int | None = None
 
     @field_validator("max_retries")
     @classmethod
@@ -57,8 +59,8 @@ class LimitsSpec(BaseModel):
 
     @field_validator("max_concurrency")
     @classmethod
-    def _max_concurrency_positive(cls, value: int) -> int:
-        if value < 1:
+    def _max_concurrency_positive(cls, value: int | None) -> int | None:
+        if value is not None and value < 1:
             raise ValueError("max_concurrency must be >= 1")
         return value
 
