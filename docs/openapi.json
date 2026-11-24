@@ -2463,6 +2463,18 @@
             "title": "Api",
             "type": "object"
           },
+          "audit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit"
+          },
           "budget_usage": {
             "additionalProperties": {
               "type": "integer"

@@ -21,12 +21,14 @@ _log = get_logger("devsandbox.api.server")
 
 @asynccontextmanager
 async def _engine_lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Start the orchestration engine in the server's event loop.
+    """Start the orchestration engine and audit shipper in the server loop.
 
     The engine is the only component that starts containers, so serving HTTP
-    without it is useful only for inspection/debugging.  Shutdown is graceful:
-    no new attempts are launched, then in-flight work is given the engine's
-    configured timeout before cancellation.
+    without it is useful only for inspection/debugging.  Audit shipping is
+    independent of the engine and keeps running under ``--no-engine`` so the
+    append-only event log still reaches the operator sink.  Shutdown is
+    graceful: no new attempts are launched, then in-flight work is given the
+    engine's configured timeout before cancellation.
     """
     container = app.state.container
     engine = container.engine if container is not None else None
@@ -34,9 +36,16 @@ async def _engine_lifespan(app: FastAPI) -> AsyncIterator[None]:
     task: asyncio.Task[None] | None = None
     if runner is not None and _engine_enabled(container):
         task = asyncio.create_task(_run_engine(runner), name="devsandbox-engine")
+    audit_task = _start_audit_shipper(container)
     try:
         yield
     finally:
+        if audit_task is not None:
+            audit_task.cancel()
+            await asyncio.gather(audit_task, return_exceptions=True)
+            shipper = getattr(container, "audit_shipper", None) if container is not None else None
+            if shipper is not None:
+                await shipper.aclose()
         if task is not None:
             request_shutdown = getattr(engine, "request_shutdown", None)
             if request_shutdown is not None:
@@ -47,6 +56,29 @@ async def _engine_lifespan(app: FastAPI) -> AsyncIterator[None]:
                 _log.warning("engine did not stop within 60s; cancelling")
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
+
+
+def _start_audit_shipper(container: AppContainer | None) -> asyncio.Task[None] | None:
+    if container is None:
+        return None
+    shipper = getattr(container, "audit_shipper", None)
+    if shipper is None:
+        return None
+    return asyncio.create_task(_run_audit_shipper(shipper), name="devsandbox-audit")
+
+
+async def _run_audit_shipper(shipper: Any) -> None:
+    """Run audit shipping, logging failures instead of losing the task."""
+    try:
+        await shipper.run_forever()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # pragma: no cover - rare startup/runtime failure
+        _log.error(
+            "audit shipper stopped unexpectedly",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
 
 
 def _engine_enabled(container: AppContainer | None) -> bool:

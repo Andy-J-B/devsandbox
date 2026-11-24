@@ -244,6 +244,9 @@ async def system_status(request: Request) -> SystemStatus:
         "auth_required": True,
         "request_id_header": container.settings.api.request_id_header,
     }
+    audit_info: dict[str, Any] | None = None
+    if container.audit_shipper is not None:
+        audit_info = container.audit_shipper.status()
     return SystemStatus(
         version=container.version,
         engine=EngineStatusView(
@@ -262,6 +265,7 @@ async def system_status(request: Request) -> SystemStatus:
         budget_usage=budget,
         projects=len(projects),
         api=api_info,
+        audit=audit_info,
     )
 
 

@@ -88,3 +88,38 @@ async def test_engine_crash_does_not_abort_server_lifespan(tmp_path) -> None:
         await asyncio.sleep(0.01)
 
     assert engine.shutdown_calls == 1
+
+
+class _LifespanShipper:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.cancelled = False
+        self.closed = False
+
+    async def run_forever(self) -> None:
+        self.started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+async def test_lifespan_runs_the_audit_shipper_without_the_engine(tmp_path) -> None:
+    settings = make_settings(str(tmp_path / "data"))  # run_engine=False
+    shipper = _LifespanShipper()
+    container = cast(
+        AppContainer,
+        SimpleNamespace(settings=settings, version="test", engine=None, audit_shipper=shipper),
+    )
+    app = create_server_app(container)
+
+    async with app.router.lifespan_context(app):
+        await asyncio.wait_for(shipper.started.wait(), timeout=2)
+        assert shipper.cancelled is False
+
+    assert shipper.cancelled is True
+    assert shipper.closed is True

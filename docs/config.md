@@ -98,6 +98,15 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
     directories even when they exceed the age window
   - Only workspaces, agent logs, and validation scratch are collectable;
     canonical repo mirrors, integration scratch, and secrets are report-only.
+- `audit`: optional export of the append-only event log (see [audit.md](audit.md))
+  - `enabled` (default `false`), `sink` (`file` default, or `webhook`)
+  - `path` / `state_path` default to `<data_root>/audit/events.ndjson` and
+    `<data_root>/audit/cursor.json`
+  - `webhook_url`, `webhook_token`, `webhook_timeout_seconds`
+  - `interval_seconds` (default `5`), `batch_size` (default `200`),
+    `max_retries` (default `3`), `retry_backoff_seconds`,
+    `max_payload_bytes` (default `64000`). Shipping is at-least-once: the
+    cursor advances only after a batch is accepted.
 - `validation`: independent validation policy (plan 09)
   - `image` (default `devsandbox/validator:latest`), `max_output_bytes`
   - `max_changed_files`, `max_diff_lines`

@@ -15,6 +15,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ..audit.shipper import AuditShipper
 from ..common.time import utcnow
 from ..config.settings import DevSandboxSettings
 from ..gitmgr.interfaces import GitManager
@@ -54,6 +55,7 @@ class AppContainer:
     storage: StorageJanitor | None = None
     docker_ping: Callable[[], bool] | None = None
     report_builder: ReportBuilder | None = None
+    audit_shipper: AuditShipper | None = None
     version: str = "0.1.0"
     clock: Callable[[], datetime] = field(default=utcnow)
     extra: dict[str, Any] = field(default_factory=dict)

@@ -18,6 +18,8 @@ from ..agents.interfaces import AgentAdapter
 from ..agents.models import UsageLimiter
 from ..agents.opencode import OpenCodeAdapter
 from ..agents.usage import SqlUsageStore
+from ..audit.shipper import AuditShipper
+from ..audit.sinks import AuditSink, JsonlFileSink, WebhookSink
 from ..common.types import RepoHandle
 from ..config.policy import SecurityPolicy
 from ..config.settings import DevSandboxSettings, get_settings
@@ -102,6 +104,45 @@ def _docker_ping() -> bool:
         return bool(client.ping())
     finally:
         client.close()
+
+
+def _build_audit_shipper(
+    settings: DevSandboxSettings,
+    session_factory: async_sessionmaker[AsyncSession],
+    data_root: Path,
+) -> AuditShipper | None:
+    """Build the audit shipper when shipping is enabled.
+
+    Paths default under ``<data_root>/audit`` so the cursor and NDJSON file
+    travel with the rest of the instance state.  Disabled shipping returns
+    ``None`` and leaves the DB event log as the only audit destination.
+    """
+    audit = settings.audit
+    if not audit.enabled:
+        return None
+    audit_dir = data_root / "audit"
+    if audit.sink == "webhook":
+        if not audit.webhook_url:  # pragma: no cover - settings validator guards this
+            raise ValueError("audit.webhook_url is required for the webhook sink")
+        sink: AuditSink = WebhookSink(
+            audit.webhook_url,
+            token=audit.webhook_token,
+            timeout_seconds=audit.webhook_timeout_seconds,
+            max_retries=audit.max_retries,
+            backoff_base_seconds=audit.retry_backoff_seconds,
+        )
+    else:
+        sink = JsonlFileSink(Path(audit.path) if audit.path else audit_dir / "events.ndjson")
+    return AuditShipper(
+        session_factory,
+        sink,
+        state_path=Path(audit.state_path) if audit.state_path else audit_dir / "cursor.json",
+        batch_size=audit.batch_size,
+        interval_seconds=audit.interval_seconds,
+        max_retries=audit.max_retries,
+        retry_backoff_seconds=audit.retry_backoff_seconds,
+        max_payload_bytes=audit.max_payload_bytes,
+    )
 
 
 def _make_agent(
@@ -227,6 +268,8 @@ def build_container(
         replanner=replanner,
     )
 
+    audit_shipper = _build_audit_shipper(resolved, session_factory, data_root)
+
     return AppContainer(
         settings=resolved,
         session_factory=session_factory,
@@ -237,6 +280,7 @@ def build_container(
         git=git,
         storage=storage,
         docker_ping=_docker_ping,
+        audit_shipper=audit_shipper,
         extra={"sql_engine": sql_engine, "sandbox": sandbox, "agent": agent},
     )
 

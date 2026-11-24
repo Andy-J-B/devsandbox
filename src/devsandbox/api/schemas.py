@@ -240,6 +240,7 @@ class SystemStatus(BaseModel):
     budget_usage: dict[str, int] = Field(default_factory=dict)
     projects: int = 0
     api: dict[str, Any] = Field(default_factory=dict)
+    audit: dict[str, Any] | None = None
 
 
 class HealthResponse(BaseModel):

@@ -121,7 +121,7 @@ Each SSE frame is `id: <event_id>`, `event: <type>`, `data: <json>`.
 | Method | Path | Notes |
 | --- | --- | --- |
 | `GET` | `/projects/{id}/report` | `?format=json|markdown|html` (default JSON). Read-only and deterministic for a given DB state; see [reporting.md](reporting.md). |
-| `GET` | `/system/status` | Engine state, host resources/pressure, budget usage, project count, and API info. |
+| `GET` | `/system/status` | Engine state, host resources/pressure, budget usage, project count, API info, and audit-shipper status when enabled. |
 | `GET` | `/system/storage` | Data-root usage by category plus filesystem total/free/used bytes. |
 | `POST` | `/system/gc` | Run retention GC; `?dry_run=true` previews removals. Emits `STORAGE_GC_COMPLETED`. |
 | `GET` | `/healthz` | Liveness; always `200` while the process is up. |
@@ -135,4 +135,6 @@ factory, `ProjectService`, a plan-service factory, and optional
 engine/monitor/git/docker/report hooks. `api/bootstrap.py` wires the concrete
 implementations for `serve`; tests inject fake services and still exercise the
 real repositories. The engine is started in the server lifespan and stopped
-gracefully on shutdown (`api/server.py`).
+gracefully on shutdown (`api/server.py`). When audit shipping is enabled, the
+same lifespan starts the shipper independently of the engine; see
+[audit.md](audit.md).

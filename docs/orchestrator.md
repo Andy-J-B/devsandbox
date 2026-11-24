@@ -235,7 +235,8 @@ budget check is a circuit breaker, not a retry.
 
 Every transition, scheduling decision, policy denial, circuit breaker, recovery
 action, and lease event is an append-only audit event (`orchestrator/events.py`).
-Payloads are redacted before storage.
+Payloads are redacted before storage. The optional audit shipper exports these
+rows to a file or webhook with at-least-once delivery; see [audit.md](audit.md).
 
 `engine.status()` returns an `EngineStatus` snapshot: running attempt task ids,
 ready queue, current deferrals, pressure, per-project token usage, total

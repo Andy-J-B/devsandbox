@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..common.types import normalize_allowed_host
@@ -430,6 +430,64 @@ class ValidationSettings(BaseModel):
         return value
 
 
+class AuditSettings(BaseModel):
+    """Audit-log shipping policy (plan 08/10).
+
+    The database event table remains the authoritative append-only audit log.
+    Shipping is an optional, at-least-once export to an operator-owned sink.
+    The cursor is persisted separately so a crash re-sends at most one batch
+    instead of losing events.
+    """
+
+    enabled: bool = False
+    sink: Literal["file", "webhook"] = "file"
+    # Defaults are resolved under ``data_root/audit`` by bootstrap.
+    path: str | None = None
+    state_path: str | None = None
+    webhook_url: str | None = None
+    webhook_token: SecretStr | None = None
+    webhook_timeout_seconds: float = 10.0
+    interval_seconds: float = 5.0
+    batch_size: int = 200
+    max_retries: int = 3
+    retry_backoff_seconds: float = 1.0
+    max_payload_bytes: int = 64_000
+
+    @field_validator(
+        "webhook_timeout_seconds",
+        "interval_seconds",
+        "retry_backoff_seconds",
+    )
+    @classmethod
+    def _positive_durations(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("audit durations must be > 0")
+        return value
+
+    @field_validator("batch_size", "max_payload_bytes")
+    @classmethod
+    def _positive_limits(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("audit limits must be > 0")
+        return value
+
+    @field_validator("max_retries")
+    @classmethod
+    def _retries_non_negative(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("audit max_retries must be >= 0")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_sink(self) -> AuditSettings:
+        if self.enabled and self.sink == "webhook":
+            if not self.webhook_url:
+                raise ValueError("audit.webhook_url is required for the webhook sink")
+            if not self.webhook_url.startswith(("http://", "https://")):
+                raise ValueError("audit.webhook_url must be an http(s) URL")
+        return self
+
+
 class DevSandboxSettings(BaseSettings):
     """Top-level DevSandbox settings."""
 
@@ -458,6 +516,7 @@ class DevSandboxSettings(BaseSettings):
     planner: PlannerConfig = PlannerConfig()
     validation: ValidationSettings = ValidationSettings()
     storage: StorageSettings = StorageSettings()
+    audit: AuditSettings = AuditSettings()
     api: ApiSettings = ApiSettings()
     # Top-level alias so ``DEVSANDBOX_API_TOKEN`` works as documented.  The
     # nested ``DEVSANDBOX_API__TOKEN`` form is also supported.

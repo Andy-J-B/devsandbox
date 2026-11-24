@@ -765,7 +765,30 @@ async def test_system_status(api) -> None:
     assert body["engine"]["budget_usage"] == {"proj-1": 1234}
     assert body["resources"]["cpu_count"] == 4
     assert body["api"]["auth_required"] is True
+    assert body["audit"] is None
     assert engine.calls == 1
+
+
+async def test_system_status_reports_audit_shipper(api) -> None:
+    _client, container = api
+
+    class _Shipper:
+        def status(self) -> dict[str, Any]:
+            return {"enabled": True, "shipped": 7, "last_event_id": "evt-7"}
+
+    import dataclasses
+
+    app = make_app(dataclasses.replace(container, audit_shipper=_Shipper()))  # type: ignore[arg-type]
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client2:
+        response = await client2.get("/v1/system/status", headers=HEADERS)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["audit"] == {
+        "enabled": True,
+        "shipped": 7,
+        "last_event_id": "evt-7",
+    }
 
 
 async def test_unknown_ids_return_404(api) -> None:
