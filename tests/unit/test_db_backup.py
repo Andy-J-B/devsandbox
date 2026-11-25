@@ -16,6 +16,7 @@ from devsandbox.db.backup import (
     manifest_path_for,
     parse_postgres_url,
     restore_database,
+    verify_backup,
 )
 
 URL = "postgresql+asyncpg://dbuser:topsecret@db.example:5433/devsandbox"
@@ -236,3 +237,68 @@ def test_missing_postgres_tool_is_a_config_error(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(ConfigError, match="not found on PATH"):
         backup_module._tool("pg_dump")
+
+
+def _write_manifest(dump: Path, *, sha256: str | None = None, size: int | None = None) -> None:
+    import hashlib
+
+    digest = sha256 or hashlib.sha256(dump.read_bytes()).hexdigest()
+    manifest = BackupManifest(
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        database="devsandbox",
+        host="db.example",
+        port=5433,
+        username="dbuser",
+        sha256=digest,
+        bytes=size if size is not None else dump.stat().st_size,
+    )
+    manifest_path_for(dump).write_text(manifest.model_dump_json(), encoding="utf-8")
+
+
+async def test_verify_backup_checks_manifest_and_digest(tmp_path: Path) -> None:
+    dump = tmp_path / "backup.dump"
+    dump.write_bytes(b"custom dump")
+    _write_manifest(dump)
+
+    result = await verify_backup(dump)
+
+    assert result.checksum_verified is True
+    assert result.manifest is not None
+    assert result.manifest.database == "devsandbox"
+    assert result.bytes == len(b"custom dump")
+    assert result.detail == "manifest and checksum verified"
+
+
+async def test_verify_backup_without_manifest_is_unverified(tmp_path: Path) -> None:
+    dump = tmp_path / "backup.dump"
+    dump.write_bytes(b"custom dump")
+
+    result = await verify_backup(dump)
+
+    assert result.checksum_verified is False
+    assert result.manifest is None
+    assert "no manifest" in result.detail
+
+    with pytest.raises(ConfigError, match="manifest not found"):
+        await verify_backup(dump, require_manifest=True)
+
+
+async def test_verify_backup_rejects_checksum_and_size_mismatch(tmp_path: Path) -> None:
+    dump = tmp_path / "backup.dump"
+    dump.write_bytes(b"custom dump")
+    _write_manifest(dump, sha256="0" * 64)
+
+    with pytest.raises(ConfigError, match="checksum"):
+        await verify_backup(dump)
+
+    _write_manifest(dump, size=1)
+    with pytest.raises(ConfigError, match="size"):
+        await verify_backup(dump)
+
+
+async def test_restore_require_manifest_rejects_missing_sidecar(tmp_path: Path) -> None:
+    dump = tmp_path / "backup.dump"
+    dump.write_bytes(b"custom dump")
+
+    with pytest.raises(ConfigError, match="manifest not found"):
+        await restore_database(URL, dump, require_manifest=True)

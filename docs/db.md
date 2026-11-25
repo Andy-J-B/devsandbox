@@ -42,13 +42,20 @@ runs the command:
 # Stop devsandbox serve first; restore is an offline operation.
 devsandbox db backup --out /var/backups/devsandbox-$(date +%F).dump
 
-# Preview/verify first if you like:
-cat /var/backups/devsandbox-2026-11-20.dump.json
+# Verify the dump + sidecar before a restore (no database connection needed).
+devsandbox db verify --from /var/backups/devsandbox-2026-11-20.dump
 
 devsandbox db restore \
   --from /var/backups/devsandbox-2026-11-20.dump \
   --yes
 ```
+
+`db verify` is a pre-flight check for runbooks: it checks that the file exists,
+reads the sidecar, and compares the SHA-256 digest and byte size without running
+`pg_restore`. It exits non-zero on a mismatch. If the dump has no sidecar it
+reports the dump as readable but unverified; pass `--require-manifest` to make
+a missing sidecar an error. `db restore --require-manifest` applies the same
+rule to restore.
 
 Streaming through `psql` lets the restore drop the `SET transaction_timeout`
 header that `pg_restore` 17 and newer always emit. Older servers reject that

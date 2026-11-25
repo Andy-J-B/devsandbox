@@ -95,7 +95,7 @@ def test_db_commands_are_documented_and_restore_requires_confirmation(
 ) -> None:
     help_result = _invoke("db", "--help")
     assert help_result.exit_code == 0
-    for command in ("backup", "restore", "upgrade", "downgrade"):
+    for command in ("backup", "verify", "restore", "upgrade", "downgrade"):
         assert command in help_result.stdout
 
     refused = _invoke(

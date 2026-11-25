@@ -120,6 +120,20 @@ class RestoreResult(BaseModel):
     restored_at: datetime
 
 
+class BackupVerification(BaseModel):
+    """Result of checking a dump without restoring it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    manifest_path: str
+    manifest: BackupManifest | None = None
+    sha256: str
+    bytes: int
+    checksum_verified: bool = False
+    detail: str = ""
+
+
 def parse_postgres_url(database_url: str) -> PostgresTarget:
     """Parse a SQLAlchemy URL and reject non-PostgreSQL backends."""
     try:
@@ -498,9 +512,15 @@ async def restore_database(
     clean: bool = True,
     verify: bool = True,
     force: bool = False,
+    require_manifest: bool = False,
     clock: Callable[[], datetime] = utcnow,
 ) -> RestoreResult:
-    """Restore a custom-format dump into the target database."""
+    """Restore a custom-format dump into the target database.
+
+    ``require_manifest`` refuses a dump without a sidecar.  ``force`` still
+    accepts a manifest-less dump and skips the checksum comparison when a
+    sidecar exists.
+    """
     target = parse_postgres_url(database_url)
     password = password_from_url(database_url)
     dump = Path(source)
@@ -510,16 +530,23 @@ async def restore_database(
         raise ConfigError(f"backup file is empty: {dump}")
 
     sidecar = manifest_path_for(dump)
-    if verify and sidecar.is_file() and not force:
-        try:
-            manifest = BackupManifest.model_validate_json(sidecar.read_text(encoding="utf-8"))
-        except Exception as exc:
-            raise ConfigError(f"invalid backup manifest {sidecar}: {exc}") from exc
-        actual = await sha256_file(dump)
-        if actual != manifest.sha256:
-            raise ConfigError(
-                "backup checksum does not match its manifest; pass force=True to restore anyway"
-            )
+    if verify:
+        if not sidecar.is_file():
+            if require_manifest:
+                raise ConfigError(
+                    f"backup manifest not found: {sidecar} "
+                    "(a manifest is required by --require-manifest)"
+                )
+        else:
+            try:
+                manifest = BackupManifest.model_validate_json(sidecar.read_text(encoding="utf-8"))
+            except Exception as exc:
+                raise ConfigError(f"invalid backup manifest {sidecar}: {exc}") from exc
+            actual = await sha256_file(dump)
+            if actual != manifest.sha256 and not force:
+                raise ConfigError(
+                    "backup checksum does not match its manifest; pass force=True to restore anyway"
+                )
 
     restore = _tool("pg_restore")
     psql = _tool("psql")
@@ -564,9 +591,63 @@ def read_manifest(path: str | Path) -> BackupManifest:
         raise ConfigError(f"invalid backup manifest {sidecar}: {exc}") from exc
 
 
+async def verify_backup(
+    source: str | Path,
+    *,
+    require_manifest: bool = False,
+) -> BackupVerification:
+    """Check a dump's manifest and checksum without touching the database.
+
+    Intended for pre-flight checks in runbooks.  When a sidecar exists, the
+    SHA-256 digest and byte size must match.  Without a sidecar the dump is
+    reported as unverified unless ``require_manifest`` is set, in which case a
+    missing manifest is an error.
+    """
+    dump = Path(source)
+    if not dump.is_file():
+        raise ConfigError(f"backup file not found: {dump}")
+    if dump.stat().st_size == 0:
+        raise ConfigError(f"backup file is empty: {dump}")
+    sidecar = manifest_path_for(dump)
+    digest = await sha256_file(dump)
+    size = dump.stat().st_size
+    if not sidecar.is_file():
+        if require_manifest:
+            raise ConfigError(f"backup manifest not found: {sidecar} (a manifest is required)")
+        return BackupVerification(
+            path=str(dump),
+            manifest_path=str(sidecar),
+            sha256=digest,
+            bytes=size,
+            checksum_verified=False,
+            detail="no manifest sidecar; checksum was computed but not compared",
+        )
+    manifest = read_manifest(sidecar)
+    if digest != manifest.sha256:
+        raise ConfigError(
+            f"backup checksum does not match its manifest: {dump} (expected "
+            f"{manifest.sha256}, got {digest})"
+        )
+    if size != manifest.bytes:
+        raise ConfigError(
+            f"backup size does not match its manifest: {dump} "
+            f"(expected {manifest.bytes} bytes, got {size})"
+        )
+    return BackupVerification(
+        path=str(dump),
+        manifest_path=str(sidecar),
+        manifest=manifest,
+        sha256=digest,
+        bytes=size,
+        checksum_verified=True,
+        detail="manifest and checksum verified",
+    )
+
+
 __all__ = [
     "BackupManifest",
     "BackupResult",
+    "BackupVerification",
     "PostgresTarget",
     "RestoreResult",
     "backup_database",
@@ -578,4 +659,5 @@ __all__ = [
     "restore_database",
     "sanitize_database_url",
     "sha256_file",
+    "verify_backup",
 ]

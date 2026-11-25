@@ -21,7 +21,12 @@ from rich.table import Table
 
 from ..common.errors import DevSandboxError, SpecError
 from ..config.settings import get_settings
-from ..db.backup import backup_database, restore_database, sanitize_database_url
+from ..db.backup import (
+    backup_database,
+    restore_database,
+    sanitize_database_url,
+    verify_backup,
+)
 from ..spec.models import load_spec
 from .client import ApiClient, CliError, open_client
 
@@ -266,6 +271,40 @@ def db_backup(
     )
 
 
+@db_app.command("verify")
+def db_verify(
+    ctx: typer.Context,
+    source: Path = typer.Option(..., "--from", help="Custom-format dump to verify."),
+    require_manifest: bool = typer.Option(
+        False,
+        "--require-manifest",
+        help="Fail when the dump has no checksum/manifest sidecar.",
+    ),
+) -> None:
+    """Verify a dump and its sidecar manifest without restoring it."""
+    state = _state(ctx)
+    try:
+        result = asyncio.run(verify_backup(source, require_manifest=require_manifest))
+    except DevSandboxError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(code=2) from exc
+    if state.json_output:
+        _emit_json(result.model_dump(mode="json"))
+        return
+    if result.checksum_verified:
+        console.print(
+            f"[bold]Backup verified[/bold] {result.path}\n"
+            f"bytes={_format_bytes(result.bytes)}  sha256={result.sha256}\n"
+            f"manifest={result.manifest_path}"
+        )
+    else:
+        console.print(
+            f"[yellow]Backup readable but unverified[/yellow] {result.path}\n"
+            f"bytes={_format_bytes(result.bytes)}  sha256={result.sha256}\n"
+            f"{result.detail}"
+        )
+
+
 @db_app.command("restore")
 def db_restore(
     ctx: typer.Context,
@@ -273,6 +312,11 @@ def db_restore(
     yes: bool = typer.Option(False, "--yes", help="Confirm the destructive restore."),
     clean: bool = typer.Option(True, "--clean/--no-clean", help="Drop objects before restore."),
     force: bool = typer.Option(False, "--force", help="Restore even if the checksum mismatches."),
+    require_manifest: bool = typer.Option(
+        False,
+        "--require-manifest",
+        help="Refuse a dump without a checksum/manifest sidecar.",
+    ),
 ) -> None:
     """Restore a dump into the configured database (stop the server first)."""
     state = _state(ctx)
@@ -287,6 +331,7 @@ def db_restore(
                 source,
                 clean=clean,
                 force=force,
+                require_manifest=require_manifest,
             )
         )
     except DevSandboxError as exc:
