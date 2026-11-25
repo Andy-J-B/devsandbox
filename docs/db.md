@@ -36,7 +36,24 @@ systemd unit and container image both rely on this behavior; see
 
 Backups use `pg_dump --format=custom`; restore uses `pg_restore` and streams
 its SQL through `psql`. Install the PostgreSQL client tools on the host that
-runs the command:
+runs the command. The client major version **must equal or exceed** the server
+major version (`pg_dump` refuses a newer server). The orchestrator image pins
+the PGDG client major with the `POSTGRES_CLIENT_MAJOR` build arg (default
+`17`); override it when the database is newer:
+
+```bash
+# Host install example (Debian/Ubuntu): match the server, or go newer.
+sudo apt-get install postgresql-client-17
+pg_dump --version
+```
+
+```bash
+# Production image for a PostgreSQL 18 server:
+docker build \
+  --build-arg POSTGRES_CLIENT_MAJOR=18 \
+  -t devsandbox/orchestrator:local \
+  -f docker/orchestrator/Dockerfile .
+```
 
 ```bash
 # Stop devsandbox serve first; restore is an offline operation.

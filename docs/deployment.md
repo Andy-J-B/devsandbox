@@ -230,7 +230,10 @@ policy:
 - **Container:** `docker/compose.yaml` builds `devsandbox/orchestrator:local`
   from `docker/orchestrator/Dockerfile`. The image runs `devsandbox serve`
   under `tini`, exposes a `/healthz` health check, and receives `SIGTERM` for a
-  graceful engine shutdown.
+  graceful engine shutdown. It also includes version-matched PostgreSQL client
+  tools (`pg_dump`, `pg_restore`, `psql`) from PGDG, pinned by the
+  `POSTGRES_CLIENT_MAJOR` build arg (default `17`). Set that arg to the database
+  server major version or newer before building; see [db.md](db.md).
 - **systemd:** `deploy/systemd/devsandbox.service` runs `devsandbox serve` as an
   unprivileged `devsandbox` user with `docker` as a supplementary group. Copy
   it to `/etc/systemd/system/`, install the environment file from

@@ -75,6 +75,13 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
+      - name: PostgreSQL client tools (must match the postgres:16 service)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          pg_dump --version
+          pg_restore --version
+          psql --version
       - name: integration
         run: pytest -q -m "integration and not docker"
 
@@ -111,6 +118,13 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
+      - name: PostgreSQL client tools (must match the postgres:16 service)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          pg_dump --version
+          pg_restore --version
+          psql --version
       - name: build validator image
         run: docker build -t devsandbox/validator:latest docker/validator-base
       - name: e2e

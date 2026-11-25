@@ -10,6 +10,13 @@
 # Base image pinned by digest (python:3.12-slim).
 FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
+# PostgreSQL client tools for `devsandbox db backup/verify/restore`.  The major
+# version must be equal to (or newer than) the database server because pg_dump
+# refuses to dump a newer server.  Override at build time when your server is
+# newer:
+#   docker build --build-arg POSTGRES_CLIENT_MAJOR=18 ...
+ARG POSTGRES_CLIENT_MAJOR=17
+
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -19,8 +26,22 @@ RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        curl \
         git \
+        gnupg \
         tini \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        "postgresql-client-${POSTGRES_CLIENT_MAJOR}" \
+    && ln -sf "/usr/lib/postgresql/${POSTGRES_CLIENT_MAJOR}/bin/pg_dump" /usr/local/bin/pg_dump \
+    && ln -sf "/usr/lib/postgresql/${POSTGRES_CLIENT_MAJOR}/bin/pg_restore" /usr/local/bin/pg_restore \
+    && ln -sf "/usr/lib/postgresql/${POSTGRES_CLIENT_MAJOR}/bin/psql" /usr/local/bin/psql \
+    && apt-get purge -y --auto-remove curl gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

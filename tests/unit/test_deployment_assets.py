@@ -216,6 +216,18 @@ def test_systemd_env_example_has_no_committed_secret() -> None:
     assert "sk-" not in text
 
 
+def test_orchestrator_image_pins_postgres_client_tools() -> None:
+    dockerfile = _ORCHESTRATOR_DOCKERFILE.read_text(encoding="utf-8")
+    compose = _compose(_BASE_COMPOSE)["services"]["orchestrator"]
+
+    assert "ARG POSTGRES_CLIENT_MAJOR=" in dockerfile
+    assert "postgresql-client-${POSTGRES_CLIENT_MAJOR}" in dockerfile
+    assert "/usr/lib/postgresql/${POSTGRES_CLIENT_MAJOR}/bin/pg_dump" in dockerfile
+    assert "/usr/lib/postgresql/${POSTGRES_CLIENT_MAJOR}/bin/pg_restore" in dockerfile
+    assert "/usr/lib/postgresql/${POSTGRES_CLIENT_MAJOR}/bin/psql" in dockerfile
+    assert "POSTGRES_CLIENT_MAJOR" in compose["build"]["args"]
+
+
 def test_orchestrator_image_is_a_long_running_service() -> None:
     dockerfile = _ORCHESTRATOR_DOCKERFILE.read_text(encoding="utf-8")
     compose = _compose(_BASE_COMPOSE)["services"]["orchestrator"]

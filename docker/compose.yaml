@@ -41,6 +41,9 @@ services:
     build:
       context: ..
       dockerfile: docker/orchestrator/Dockerfile
+      args:
+        # Must be equal to or newer than the PostgreSQL server major version.
+        POSTGRES_CLIENT_MAJOR: ${POSTGRES_CLIENT_MAJOR:-17}
     depends_on:
       postgres:
         condition: service_healthy

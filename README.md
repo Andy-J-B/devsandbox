@@ -5,6 +5,16 @@ the repo, generates a task graph, (optionally) asks for approval, then runs
 coding agents (OpenCode first) in disposable Docker containers, validates
 results independently, and integrates validated work into a staging branch.
 
+## Prerequisites
+
+- Python 3.12 and a Docker daemon the control plane can reach.
+- PostgreSQL 16 or newer for the control-plane database.
+- PostgreSQL **client** tools (`pg_dump`, `pg_restore`, `psql`) on the host or
+  in the orchestrator image for `devsandbox db backup/verify/restore`. The
+  client major version must be equal to or newer than the server major; the
+  production image pins `POSTGRES_CLIENT_MAJOR=17` by default and accepts a
+  build arg when your server is newer. See [docs/db.md](docs/db.md).
+
 ## Development
 
 ```bash
