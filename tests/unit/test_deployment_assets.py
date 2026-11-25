@@ -197,6 +197,7 @@ def test_systemd_unit_runs_serve_and_stops_gracefully() -> None:
     assert "ExecStart=/opt/devsandbox/.venv/bin/devsandbox serve" in text
     assert "EnvironmentFile=/etc/devsandbox/devsandbox.env" in text
     assert "Restart=on-failure" in text
+    assert "ExecReload=/bin/kill -HUP $MAINPID" in text
     assert "KillSignal=SIGTERM" in text
     assert "TimeoutStopSec=120s" in text
     assert "NoNewPrivileges=yes" in text

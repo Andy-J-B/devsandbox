@@ -15,6 +15,7 @@ from ..config.settings import DevSandboxSettings, get_settings
 from .app import create_app
 from .bootstrap import build_container
 from .container import AppContainer
+from .tokens import install_reload_handler
 
 _log = get_logger("devsandbox.api.server")
 
@@ -139,6 +140,10 @@ def run(
         )
     container = build_container(resolved)
     app = create_server_app(container)
+    if install_reload_handler(app):
+        _log.info("SIGHUP reloads API tokens", token_file=bool(resolved.api.token_file))
+    else:
+        _log.info("SIGHUP token reload is unavailable on this platform/thread")
     _log.info(
         "starting DevSandbox API",
         host=resolved.api.host,

@@ -50,7 +50,9 @@ and `DEVSANDBOX_AGENT__BASE_URL=http://host.docker.internal:11434/v1`.
 - `api`: `host` (default `127.0.0.1`), `port`, `token` (prefer the top-level
   `DEVSANDBOX_API_TOKEN` alias), `additional_tokens` (JSON list of old tokens
   kept valid during a rotation window; empty and duplicate entries are
-  ignored), `max_spec_bytes`, `max_log_bytes`, `max_log_lines`,
+  ignored), `token_file` (newline-delimited tokens re-read on `SIGHUP` for
+  restart-free rotation; blank lines and `#` comments are ignored),
+  `max_spec_bytes`, `max_log_bytes`, `max_log_lines`,
   `expensive_rate_limit_per_minute`, `request_id_header`, `run_engine`,
   `metrics_enabled` (Prometheus `/metrics`; default true, aggregate-only and
   unauthenticated like the probes).

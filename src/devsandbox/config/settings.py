@@ -325,6 +325,10 @@ class ApiSettings(BaseModel):
     ``additional_tokens`` accepts old tokens during a deliberate rotation
     window.  Every configured token authenticates; remove an entry once all
     clients use the new primary token.
+
+    ``token_file`` adds newline-delimited tokens from a file that is re-read on
+    ``SIGHUP``, so an operator can rotate without restarting the server.  The
+    file and settings tokens are combined; duplicates are ignored.
     """
 
     host: str = "127.0.0.1"
@@ -333,6 +337,9 @@ class ApiSettings(BaseModel):
     # Rotation overlap: old tokens remain valid until the operator removes
     # them.  Empty entries are ignored, so a blank env var is harmless.
     additional_tokens: list[SecretStr] = Field(default_factory=list)
+    # Optional newline-delimited token file, re-read on SIGHUP.  Blank lines
+    # and lines starting with '#' are ignored.
+    token_file: str | None = None
     max_spec_bytes: int = 1_000_000
     max_log_bytes: int = 1_000_000
     max_log_lines: int = 5_000
@@ -356,6 +363,16 @@ class ApiSettings(BaseModel):
     def _positive_limit(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("api limits must be > 0")
+        return value
+
+    @field_validator("token_file")
+    @classmethod
+    def _token_file_not_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("api.token_file must not be empty")
         return value
 
     @field_validator("expensive_rate_limit_per_minute")

@@ -15,12 +15,12 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import SecretStr
 
-from ..common.errors import ConfigError
 from ..common.logging import get_logger
 from .container import AppContainer
 from .errors import error_response, register_error_handlers
 from .metrics import CONTENT_TYPE, HttpMetrics
 from .routes import events, plans, projects, reports, system, tasks
+from .tokens import TokenStore, tokens_from_settings
 
 _log = get_logger("devsandbox.api")
 
@@ -145,8 +145,9 @@ def create_app(
     the HTTP server.
     """
     settings = container.settings if container is not None else None
-    if container is not None and not container.settings.effective_api_tokens:
-        raise ConfigError("DEVSANDBOX_API_TOKEN is required before the API can serve requests")
+    token_store = (
+        TokenStore(tokens_from_settings(container.settings)) if container is not None else None
+    )
 
     app = FastAPI(
         title="DevSandbox API",
@@ -158,6 +159,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.container = container
+    app.state.token_store = token_store
     app.state.metrics = HttpMetrics()
     app.state.rate_limiter = _RateLimiter(
         settings.api.expensive_rate_limit_per_minute if settings is not None else 60
@@ -226,7 +228,8 @@ def create_app(
             return response
 
         if current is not None and request.url.path.startswith("/v1"):
-            expected = current.settings.effective_api_tokens
+            store = app.state.token_store
+            expected = store.tokens if isinstance(store, TokenStore) else ()
             provided = _bearer_token(request)
             if not expected or provided is None or not _matches_any_token(provided, expected):
                 return record(

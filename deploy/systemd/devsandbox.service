@@ -19,6 +19,10 @@ WorkingDirectory=/var/lib/devsandbox
 # DEVSANDBOX_MIGRATIONS__AUTO_UPGRADE=false in the env file to run them as a
 # separate deployment step instead.
 ExecStart=/opt/devsandbox/.venv/bin/devsandbox serve
+# Reload bearer tokens without restarting the engine or dropping requests.
+# Point DEVSANDBOX_API__TOKEN_FILE at a 0600 file, edit it, then run
+# `systemctl reload devsandbox`.
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s
 # Give the engine time to finish in-flight attempts and release its lease.

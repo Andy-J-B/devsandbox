@@ -347,6 +347,28 @@ unset DEVSANDBOX_API__ADDITIONAL_TOKENS
 devsandbox serve
 ```
 
+For restart-free rotation, point `api.token_file` at a 0600 file with one
+token per line and send `SIGHUP` after each edit. The file may contain the old
+and new tokens during the overlap window; settings tokens and file tokens are
+combined and de-duplicated.
+
+```bash
+# /etc/devsandbox/api-tokens (chmod 600, owned by the service user)
+new-token
+old-token
+
+DEVSANDBOX_API__TOKEN_FILE=/etc/devsandbox/api-tokens devsandbox serve
+
+# After clients switch: remove old-token from the file, then reload.
+sudo systemctl kill --signal=HUP devsandbox     # or: kill -HUP <pid>
+```
+
+A reload that produces no tokens (for example an empty or unreadable file) is
+rejected and the last good set remains active, so a bad edit cannot lock the
+API out or open it. Reload failures are logged without token values. If you
+run the service under systemd, `ExecReload=/bin/kill -HUP $MAINPID` makes
+`systemctl reload devsandbox` do the same thing.
+
 Both primary and old tokens are compared in constant time; an unknown token
 gets `401` with `WWW-Authenticate: Bearer`. Remove the old value as soon as the
 last client is updated. Never commit tokens to Git, reuse a token across

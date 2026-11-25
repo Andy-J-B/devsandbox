@@ -25,7 +25,7 @@ request logs (structured logging writes to stderr).
 | `devsandbox db upgrade [REVISION]` / `db downgrade [REVISION]` | Offline migration control (defaults: `head` / `-1`). |
 | `devsandbox db backup --out FILE [--overwrite]` | Write a `pg_dump` custom dump plus a checksum/Alembic manifest sidecar. |
 | `devsandbox db restore --from FILE --yes [--no-clean] [--force]` | Offline restore with checksum verification. Stop `serve` first. |
-| `devsandbox serve [--host H] [--port P] [--token T] [--no-engine] [--log-level L]` | Run the API and the orchestration engine until interrupted. |
+| `devsandbox serve [--host H] [--port P] [--token T] [--no-engine] [--log-level L]` | Run the API and the orchestration engine until interrupted. `SIGHUP` reloads `api.token_file` for restart-free token rotation. |
 | `devsandbox submit SPEC [--repo PATH\|URL]` | Submit a YAML spec; prints the project id/status. |
 | `devsandbox plan PROJECT` | Generate the next plan version (analyzes a fresh project automatically). |
 | `devsandbox show-plan PROJECT [--md]` | Show the newest plan as a table, or all plans as Markdown. |
