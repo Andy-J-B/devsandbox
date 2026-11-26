@@ -23,6 +23,7 @@ VALIDATION_STARTED = "validation.started"
 VALIDATION_FINISHED = "validation.finished"
 INTEGRATION_PREPARED = "integration.prepared"
 INTEGRATION_FINISHED = "integration.finished"
+PUSH_FINISHED = "push.finished"
 TASK_RETRY_SCHEDULED = "task.retry_scheduled"
 TASK_EXHAUSTED = "task.exhausted"
 TASK_CANCELLED = "task.cancelled"
@@ -126,6 +127,7 @@ __all__ = [
     "PROJECT_REPLANNED",
     "PROJECT_RESUMED",
     "PROJECT_STARTED",
+    "PUSH_FINISHED",
     "RECOVERY_ACTION",
     "RECOVERY_COMPLETED",
     "RESOURCE_PRESSURE",

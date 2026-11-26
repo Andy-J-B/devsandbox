@@ -65,7 +65,10 @@ restrictions, and integrates validated changes into the **staging branch**
   retention is requested.
 - `push_branch(repo, branch) -> PushResult` — pushes only staging/attempt
   branches, never `--force`, never `main`; disabled unless
-  `security.allow_push`.
+  `security.allow_push`. The orchestrator calls it after each successful
+  integration when push is enabled, records a `push.finished` audit event, and
+  treats a push failure as non-fatal (the local staging branch remains
+  authoritative and a later integration retries the non-force push).
 - `list_workspaces(project_id)`, `detect_interrupted_integration(repo)`,
   `recover_integration(repo)` — recovery helpers for plan 08.
 

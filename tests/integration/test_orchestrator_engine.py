@@ -158,6 +158,70 @@ async def test_happy_path_dag_four_tasks(db_engine, settings) -> None:
     assert len(agent.calls) == 4
 
 
+async def test_staging_push_is_wired_and_disabled_by_default(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    spec = make_spec()
+
+    # Default policy: integration happens locally, but no remote push is tried.
+    _, _, local_tasks = await seed_project(maker, spec, keys=["t-a"])
+    local_agent = FakeAgentAdapter()
+    local_agent.queue_result(_result())
+    local_git = FakeGitManager()
+    local_engine = _engine(maker, settings, clock, git=local_git, agent=local_agent)
+    await local_engine.run_until_idle()
+    assert not [call for call in local_git.calls if call["op"] == "push_branch"]
+    assert TaskStatus((await get_task(maker, local_tasks["t-a"].id)).status) is TaskStatus.COMPLETED
+
+    # With allow_push, the completed integration mirrors the staging branch.
+    await seed_project(maker, spec, project_id="proj-push", plan_id="plan-push", keys=["t-a"])
+    push_settings = settings.model_copy(
+        update={"security": settings.security.model_copy(update={"allow_push": True})}
+    )
+    push_agent = FakeAgentAdapter()
+    push_agent.queue_result(_result())
+    push_git = FakeGitManager()
+    push_engine = _engine(maker, push_settings, clock, git=push_git, agent=push_agent)
+    await push_engine.run_until_idle()
+
+    pushes = [call for call in push_git.calls if call["op"] == "push_branch"]
+    assert pushes == [{"op": "push_branch", "branch": "devsandbox/proj-push/staging"}]
+    async with maker() as session:
+        events = await EventRepo(session).list_for_project("proj-push", limit=100)
+    push_events = [event for event in events if event.type == "push.finished"]
+    assert len(push_events) == 1
+    assert push_events[0].payload_json["status"] == "pushed"
+    assert push_events[0].payload_json["branch"] == "devsandbox/proj-push/staging"
+
+
+class _FailingPushGit(FakeGitManager):
+    async def push_branch(self, repo, branch):  # type: ignore[no-untyped-def]
+        raise RuntimeError("remote refused the ref")
+
+
+async def test_staging_push_failure_does_not_fail_the_task(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    spec = make_spec()
+    _, _, tasks = await seed_project(maker, spec, keys=["t-a"])
+    push_settings = settings.model_copy(
+        update={"security": settings.security.model_copy(update={"allow_push": True})}
+    )
+    agent = FakeAgentAdapter()
+    agent.queue_result(_result())
+    engine = _engine(maker, push_settings, clock, git=_FailingPushGit(), agent=agent)
+
+    await engine.run_until_idle()
+
+    row = await get_task(maker, tasks["t-a"].id)
+    assert TaskStatus(row.status) is TaskStatus.COMPLETED
+    async with maker() as session:
+        events = await EventRepo(session).list_for_project("proj-1", limit=100)
+    push_event = next(event for event in events if event.type == "push.finished")
+    assert push_event.payload_json["status"] == "error"
+    assert "remote refused" in push_event.payload_json["detail"]
+
+
 async def test_retry_then_success(db_engine, settings) -> None:
     maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
     clock = FakeClock()

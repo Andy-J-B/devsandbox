@@ -1494,6 +1494,7 @@ class OrchestratorEngine:
             )
             await session.commit()
         await self.faults.checkpoint("after_integration_commit")
+        await self._push_staging(task.project_id)
 
         outcome = TaskOutcomeNote(
             task_id=task.id,
@@ -1519,6 +1520,51 @@ class OrchestratorEngine:
             await session.commit()
         await self._remove_workspace(workspace, keep=False)
         await self._destroy_container(str(attempt_id))
+
+    async def _push_staging(self, project_id: str) -> None:
+        """Best-effort mirror of the staging branch to the configured remote.
+
+        Disabled unless ``security.allow_push`` is true.  A push failure never
+        fails an already-integrated task: the canonical result is the local
+        staging branch, and a later integration retries the same non-force
+        push.  The git manager refuses ``main`` and non-``devsandbox/`` refs
+        even when push is enabled.
+        """
+        if not self.policy.push_allowed():
+            return
+        project = await self._load_project(project_id)
+        if project is None:
+            return
+        status = "skipped"
+        branch = project.staging_branch or f"devsandbox/{project_id}/staging"
+        remote_ref: str | None = None
+        remote_commit: str | None = None
+        detail = ""
+        try:
+            repo = repo_handle_for_project(project)
+            branch = repo.staging_branch or branch
+            result = await self.git.push_branch(repo, branch)
+            status = "pushed" if result.pushed else "skipped"
+            remote_ref = result.remote_ref
+            remote_commit = result.remote_commit
+            detail = result.detail
+        except Exception as exc:
+            status = "error"
+            detail = f"{type(exc).__name__}: {exc}"
+        async with self._session_factory() as session:
+            await events.emit_event(
+                session,
+                project_id=project_id,
+                event_type=events.PUSH_FINISHED,
+                payload={
+                    "status": status,
+                    "branch": branch,
+                    "remote_ref": remote_ref,
+                    "remote_commit": remote_commit,
+                    "detail": detail,
+                },
+            )
+            await session.commit()
 
     # ================================================================== failures
     async def _handle_failure(
