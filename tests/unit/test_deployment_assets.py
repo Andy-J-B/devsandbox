@@ -22,6 +22,7 @@ _DEPLOYMENT = _ROOT / "docs" / "deployment.md"
 _SYSTEMD_UNIT = _ROOT / "deploy" / "systemd" / "devsandbox.service"
 _SYSTEMD_ENV = _ROOT / "deploy" / "systemd" / "devsandbox.env.example"
 _ORCHESTRATOR_DOCKERFILE = _ROOT / "docker" / "orchestrator" / "Dockerfile"
+_CI_WORKFLOW = _ROOT / ".github" / "workflows" / "ci.yml"
 
 _SSE_LOCATION = re.compile(
     r"location ~ \^/v1/projects/\[\^/\]\+/events/stream\$ \{(?P<body>.*?)\n        \}",
@@ -226,6 +227,28 @@ def test_orchestrator_image_pins_postgres_client_tools() -> None:
     assert "/usr/lib/postgresql/${POSTGRES_CLIENT_MAJOR}/bin/pg_restore" in dockerfile
     assert "/usr/lib/postgresql/${POSTGRES_CLIENT_MAJOR}/bin/psql" in dockerfile
     assert "POSTGRES_CLIENT_MAJOR" in compose["build"]["args"]
+
+
+def test_orchestrator_pgdg_suite_tracks_the_base_image_release() -> None:
+    dockerfile = _ORCHESTRATOR_DOCKERFILE.read_text(encoding="utf-8")
+
+    # Hardcoding a suite drifts from the pinned base image and breaks package
+    # resolution (bookworm-pgdg on a trixie base failed CI).
+    assert ". /etc/os-release" in dockerfile
+    assert "${VERSION_CODENAME}-pgdg" in dockerfile
+    assert "bookworm-pgdg" not in dockerfile
+    assert "trixie-pgdg" not in dockerfile
+
+
+def test_ci_postgres_client_is_not_pinned_to_one_ubuntu_release() -> None:
+    workflow = _CI_WORKFLOW.read_text(encoding="utf-8")
+
+    # ubuntu-latest moves between Ubuntu releases; only some ship
+    # postgresql-client-16.  Install the distro client and assert it is new
+    # enough for the postgres:16 service instead.
+    assert "postgresql-client-16" not in workflow
+    assert "postgresql-client" in workflow
+    assert '"${client_major}" -lt 16' in workflow
 
 
 def test_orchestrator_image_is_a_long_running_service() -> None:

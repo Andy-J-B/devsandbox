@@ -75,13 +75,22 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - name: PostgreSQL client tools (must match the postgres:16 service)
+      - name: PostgreSQL client tools (>= the postgres:16 service)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          # ubuntu-latest tracks the newest Ubuntu release, whose default client
+          # may be newer than the postgres:16 service.  A newer pg_dump or
+          # pg_restore can read an older server; only an older client is
+          # unsupported.
+          sudo apt-get install -y --no-install-recommends postgresql-client
           pg_dump --version
           pg_restore --version
           psql --version
+          client_major="$(pg_dump --version | awk '{print $3}' | cut -d. -f1)"
+          if [ "${client_major}" -lt 16 ]; then
+            echo "::error::PostgreSQL client ${client_major} is older than the postgres:16 service"
+            exit 1
+          fi
       - name: integration
         run: pytest -q -m "integration and not docker"
 
@@ -118,13 +127,22 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - name: PostgreSQL client tools (must match the postgres:16 service)
+      - name: PostgreSQL client tools (>= the postgres:16 service)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          # ubuntu-latest tracks the newest Ubuntu release, whose default client
+          # may be newer than the postgres:16 service.  A newer pg_dump or
+          # pg_restore can read an older server; only an older client is
+          # unsupported.
+          sudo apt-get install -y --no-install-recommends postgresql-client
           pg_dump --version
           pg_restore --version
           psql --version
+          client_major="$(pg_dump --version | awk '{print $3}' | cut -d. -f1)"
+          if [ "${client_major}" -lt 16 ]; then
+            echo "::error::PostgreSQL client ${client_major} is older than the postgres:16 service"
+            exit 1
+          fi
       - name: build validator image
         run: docker build -t devsandbox/validator:latest docker/validator-base
       - name: e2e

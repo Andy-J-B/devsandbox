@@ -15,6 +15,10 @@ FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb
 # refuses to dump a newer server.  Override at build time when your server is
 # newer:
 #   docker build --build-arg POSTGRES_CLIENT_MAJOR=18 ...
+#
+# The PGDG suite is derived from the base image's os-release codename so that a
+# base-image bump (for example bookworm -> trixie) cannot leave the repository
+# pointing at the wrong distribution and break package resolution.
 ARG POSTGRES_CLIENT_MAJOR=17
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -33,7 +37,8 @@ RUN apt-get update \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
         -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+    && . /etc/os-release \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
         > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
