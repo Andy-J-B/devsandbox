@@ -2,8 +2,7 @@
 
 Project specs are YAML documents describing a coding task for an autonomous
 coding agent. The full schema is implemented in
-`src/devsandbox/spec/models.py` (`ProjectSpec`) with the loader in
-`src/devsandbox/spec/loader.py`.
+`src/devsandbox/spec/models.py` (`ProjectSpec` and `load_spec`).
 
 ## Example
 
