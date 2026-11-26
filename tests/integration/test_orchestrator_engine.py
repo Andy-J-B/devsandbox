@@ -22,7 +22,7 @@ from devsandbox.common.errors import OrchestratorAlreadyRunning, SandboxError
 from devsandbox.common.types import ProjectStatus, ResourceProfile, TaskStatus
 from devsandbox.config.policy import SecurityPolicy
 from devsandbox.config.settings import ModelBudget
-from devsandbox.db.models import TaskModel
+from devsandbox.db.models import EventModel, PlanModel, TaskModel
 from devsandbox.db.repositories import (
     AttemptRepo,
     EventRepo,
@@ -522,15 +522,18 @@ async def test_autonomous_replans_are_bounded(db_engine, settings) -> None:
 
 
 @pytest.mark.parametrize(
-    ("checkpoint", "expected_replans"),
+    ("checkpoint", "expected_first", "expected_after_restart"),
     [
-        ("before_replan", 0),
-        ("after_replan", 1),
-        ("after_replan_event", 1),
+        # The request is durable before the checkpoint, so startup resumes it
+        # exactly once.
+        ("before_replan", 0, 1),
+        # The completion event is durable before these checkpoints.
+        ("after_replan", 1, 1),
+        ("after_replan_event", 1, 1),
     ],
 )
 async def test_replan_checkpoints_do_not_duplicate_replans(
-    db_engine, settings, checkpoint: str, expected_replans: int
+    db_engine, settings, checkpoint: str, expected_first: int, expected_after_restart: int
 ) -> None:
     maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
     clock = FakeClock()
@@ -562,9 +565,10 @@ async def test_replan_checkpoints_do_not_duplicate_replans(
     )
     with pytest.raises(SimulatedCrash):
         await first.run_until_idle()
-    assert len(replans) == expected_replans
+    assert len(replans) == expected_first
 
-    # A restart must not call the replanner a second time for the same failure.
+    # A restart resumes an incomplete replan but never duplicates a completed
+    # one for the same failure.
     second = _engine(
         maker,
         settings,
@@ -576,7 +580,146 @@ async def test_replan_checkpoints_do_not_duplicate_replans(
     )
     await second.run_until_idle()
 
-    assert len(replans) == expected_replans
+    assert len(replans) == expected_after_restart
+
+
+def _replan_request_payload(task: TaskModel, *, plan_version: int) -> dict[str, object]:
+    return {
+        "task_id": task.id,
+        "task_key": task.key,
+        "plan_id": task.plan_id,
+        "plan_version": plan_version,
+        "failure": {
+            "task_id": task.id,
+            "task_key": task.key,
+            "summary": "tests failed",
+            "error": "validation",
+            "validation_summary": "tests failed",
+            "files_changed": [],
+        },
+    }
+
+
+async def test_pending_replan_request_is_resumed_after_restart(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(
+        maker,
+        make_spec(),
+        keys=["t-a"],
+        mode="autonomous",
+        statuses={"t-a": TaskStatus.COMPLETED},
+    )
+    async with maker() as session:
+        task = await session.get(TaskModel, tasks["t-a"].id)
+        assert task is not None
+        session.add(
+            EventModel(
+                project_id="proj-1",
+                task_id=task.id,
+                type="project.replan_requested",
+                payload_json=_replan_request_payload(task, plan_version=1),
+                at=clock(),
+            )
+        )
+        await session.commit()
+
+    replans: list[str] = []
+
+    async def replanner(project_id: str, failures) -> object:
+        replans.append(project_id)
+        return object()
+
+    engine = _engine(maker, settings, clock, replanner=replanner)
+    await engine.run_until_idle()
+
+    assert replans == ["proj-1"]
+    async with maker() as session:
+        events = await EventRepo(session).list_for_project("proj-1", limit=100)
+    completed = [event for event in events if event.type == "project.replanned"]
+    assert len(completed) == 1
+    assert completed[0].payload_json["recovered"] is True
+
+
+async def test_replan_resume_skips_duplicate_when_plan_advanced(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    _, _, tasks = await seed_project(
+        maker,
+        make_spec(),
+        keys=["t-a"],
+        mode="autonomous",
+        statuses={"t-a": TaskStatus.COMPLETED},
+    )
+    async with maker() as session:
+        task = await session.get(TaskModel, tasks["t-a"].id)
+        assert task is not None
+        session.add(
+            PlanModel(
+                id="plan-2",
+                project_id="proj-1",
+                version=2,
+                status="proposed",
+                generated_by="replan:template",
+            )
+        )
+        session.add(
+            EventModel(
+                project_id="proj-1",
+                task_id=task.id,
+                type="project.replan_requested",
+                payload_json=_replan_request_payload(task, plan_version=1),
+                at=clock(),
+            )
+        )
+        await session.commit()
+
+    replans: list[str] = []
+
+    async def replanner(project_id: str, failures) -> object:
+        replans.append(project_id)
+        return object()
+
+    engine = _engine(maker, settings, clock, replanner=replanner)
+    await engine.run_until_idle()
+
+    assert replans == []
+    async with maker() as session:
+        events = await EventRepo(session).list_for_project("proj-1", limit=100)
+    completed = [event for event in events if event.type == "project.replanned"]
+    assert len(completed) == 1
+    assert completed[0].payload_json["duplicate_avoided"] is True
+
+
+async def test_replan_budget_is_durable_across_restarts(db_engine, settings) -> None:
+    maker = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    clock = FakeClock()
+    await seed_project(maker, make_spec(), keys=["t-a"], mode="autonomous")
+    async with maker() as session:
+        session.add(
+            PlanModel(
+                id="plan-existing-replan",
+                project_id="proj-1",
+                version=2,
+                status="proposed",
+                generated_by="replan:template",
+            )
+        )
+        await session.commit()
+
+    engine = _engine(
+        maker,
+        settings,
+        clock,
+        config=OrchestratorConfig(max_replans=1),
+    )
+
+    # A fresh process has no in-memory counter; the database count still wins.
+    assert await engine._replan_budget_available("proj-1") is False
+    async with maker() as session:
+        events = await EventRepo(session).list_for_project("proj-1", limit=100)
+    breaker = [event for event in events if event.type == "CIRCUIT_BREAKER"]
+    assert breaker and breaker[0].payload_json["replans"] == 1
 
 
 async def test_over_policy_resources_are_clamped_and_audited(db_engine, settings) -> None:

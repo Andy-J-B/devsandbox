@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError, DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -46,6 +47,7 @@ from ..context.interfaces import ContextManager
 from ..db.models import (
     AttemptModel,
     CostEntryModel,
+    EventModel,
     IntegrationModel,
     ProjectModel,
     TaskModel,
@@ -55,6 +57,7 @@ from ..db.repositories import (
     CostRepo,
     IntegrationRepo,
     LeaseRepo,
+    PlanRepo,
     ProjectRepo,
     TaskRepo,
 )
@@ -283,7 +286,7 @@ class OrchestratorEngine:
         self._deferral_counts: dict[str, int] = {}
         self._project_deferral_counts: dict[str, int] = {}
         self._integration_locks: dict[str, asyncio.Lock] = {}
-        self._replan_counts: dict[str, int] = {}
+        self._replan_locks: dict[str, asyncio.Lock] = {}
         self._launching: set[str] = set()
         # Project id for each in-flight task plus attempts reserved by a launch
         # that has not committed its attempts row yet.  The reservation keeps
@@ -353,6 +356,7 @@ class OrchestratorEngine:
         """Run recovery + rounds until no task can make progress (tests/CLI)."""
         await self.acquire_lease()
         await self._recover()
+        await self._resume_pending_replans()
         await self._emit_engine_event(events.ENGINE_STARTED)
         rounds = 0
         while rounds < max_rounds:
@@ -399,6 +403,9 @@ class OrchestratorEngine:
         """
         await self._with_db_reconnect(self.acquire_lease, description="acquire lease")
         await self._with_db_reconnect(self._recover, description="recover in-flight work")
+        await self._with_db_reconnect(
+            self._resume_pending_replans, description="resume pending replans"
+        )
         await self._with_db_reconnect(
             lambda: self._emit_engine_event(events.ENGINE_STARTED),
             description="emit engine started",
@@ -1743,18 +1750,6 @@ class OrchestratorEngine:
         project = await self._load_project(task.project_id)
         if project is None or ProjectMode(project.mode) is not ProjectMode.AUTONOMOUS:
             return
-        used = self._replan_counts.get(task.project_id, 0)
-        if used >= self.config.max_replans:
-            async with self._session_factory() as session:
-                await events.emit_event(
-                    session,
-                    project_id=task.project_id,
-                    event_type=events.CIRCUIT_BREAKER,
-                    payload={"reason": "max_replans reached", "replans": used},
-                )
-                await session.commit()
-            return
-        self._replan_counts[task.project_id] = used + 1
         failure = PlannerFailureRecord(
             task_id=task.id,
             task_key=task.key,
@@ -1762,36 +1757,213 @@ class OrchestratorEngine:
             error=record.kind.value,
             validation_summary=record.summary,
         )
-        # A replan persists a new plan/task version before control returns.
-        # Crash injection here proves that a restart either sees the completed
-        # replan or can safely run it again without duplicating work.
-        await self.faults.checkpoint("before_replan")
+        lock = self._replan_locks.setdefault(task.project_id, asyncio.Lock())
+        async with lock:
+            if not await self._replan_budget_available(task.project_id):
+                return
+            # The request is durable before the replanner runs.  If the process
+            # dies here, startup resumes it; the plan version recorded with the
+            # request also prevents a duplicate when the plan committed but the
+            # completion event did not.
+            request = await self._record_replan_request(task.project_id, task.id, failure)
+            await self.faults.checkpoint("before_replan")
+            await self._run_replan(
+                task.project_id,
+                failure,
+                plan_id=request["plan_id"],
+                plan_version=request["plan_version"],
+                recovered=False,
+            )
+
+    async def _replan_budget_available(self, project_id: str) -> bool:
+        """Return whether another replan is allowed, using the durable count."""
+        async with self._session_factory() as session:
+            used = await PlanRepo(session).count_replans(project_id)
+            if used < self.config.max_replans:
+                return True
+            await events.emit_event(
+                session,
+                project_id=project_id,
+                event_type=events.CIRCUIT_BREAKER,
+                payload={"reason": "max_replans reached", "replans": used},
+            )
+            await session.commit()
+            return False
+
+    async def _record_replan_request(
+        self,
+        project_id: str,
+        task_id: str,
+        failure: PlannerFailureRecord,
+    ) -> dict[str, Any]:
+        """Persist the replan intent and the plan version it applies to."""
+        async with self._session_factory() as session:
+            plan = await PlanRepo(session).get_active_for_project(project_id)
+            if plan is None:
+                plan = await PlanRepo(session).latest_for_project(project_id)
+            payload = {
+                "task_id": task_id,
+                "failure": failure.model_dump(mode="json"),
+                "plan_id": plan.id if plan is not None else None,
+                "plan_version": plan.version if plan is not None else None,
+            }
+            await events.emit_event(
+                session,
+                project_id=project_id,
+                task_id=task_id,
+                event_type=events.PROJECT_REPLAN_REQUESTED,
+                payload=payload,
+            )
+            await session.commit()
+            return payload
+
+    async def _run_replan(
+        self,
+        project_id: str,
+        failure: PlannerFailureRecord,
+        *,
+        plan_id: str | None,
+        plan_version: int | None,
+        recovered: bool,
+    ) -> None:
+        """Run the replanner and record the outcome, idempotently."""
+        if self.replanner is None:
+            return
         try:
-            result = await self.replanner(task.project_id, [failure])
+            result = await self.replanner(project_id, [failure])
         except Exception as exc:
             async with self._session_factory() as session:
                 await events.emit_event(
                     session,
-                    project_id=task.project_id,
+                    project_id=project_id,
                     event_type=events.PROJECT_REPLANNED,
-                    payload={"error": str(exc)},
+                    payload={
+                        "error": str(exc),
+                        "recovered": recovered,
+                        "requested_plan_id": plan_id,
+                    },
                 )
                 await session.commit()
             return
-        await self.faults.checkpoint("after_replan")
         async with self._session_factory() as session:
             await events.emit_event(
                 session,
-                project_id=task.project_id,
+                project_id=project_id,
                 event_type=events.PROJECT_REPLANNED,
                 payload={
                     "plan_id": getattr(result, "id", None),
                     "version": getattr(result, "version", None),
+                    "from_plan": plan_id,
+                    "from_version": plan_version,
+                    "recovered": recovered,
                     "failures": [failure.model_dump(mode="json")],
                 },
             )
             await session.commit()
+        # The completion event is durable before this checkpoint.  A crash
+        # here therefore cannot replay the replan; `after_replan_event` is kept
+        # as the post-event boundary for existing crash tests.
+        await self.faults.checkpoint("after_replan")
         await self.faults.checkpoint("after_replan_event")
+
+    async def _resume_pending_replans(self) -> None:
+        """Resume replans whose request committed before a crash.
+
+        A request is pending when no ``project.replanned`` event follows it.  If
+        the plan version already advanced past the requested version, the
+        replan committed before the crash and only its completion event was
+        lost; the duplicate is skipped.
+        """
+        if self.replanner is None:
+            return
+        async with self._session_factory() as session:
+            projects = await ProjectRepo(session, is_legal_project).list_by_status(
+                [ProjectStatus.EXECUTING]
+            )
+            candidates = [
+                project
+                for project in projects
+                if ProjectMode(project.mode) is ProjectMode.AUTONOMOUS
+            ]
+            if not candidates:
+                return
+            project_ids = [project.id for project in candidates]
+            result = await session.execute(
+                select(EventModel)
+                .where(EventModel.project_id.in_(project_ids))
+                .where(
+                    EventModel.type.in_(
+                        [
+                            events.PROJECT_REPLAN_REQUESTED,
+                            events.PROJECT_REPLANNED,
+                        ]
+                    )
+                )
+                .order_by(EventModel.created_at, EventModel.id)
+            )
+            rows = list(result.scalars().all())
+            latest_plans = {
+                project.id: await PlanRepo(session).latest_for_project(project.id)
+                for project in candidates
+            }
+        by_project: dict[str, list[EventModel]] = {}
+        for row in rows:
+            by_project.setdefault(row.project_id, []).append(row)
+        for project in candidates:
+            project_events = by_project.get(project.id, [])
+            requests = [
+                event for event in project_events if event.type == events.PROJECT_REPLAN_REQUESTED
+            ]
+            if not requests:
+                continue
+            request = requests[-1]
+            completed = any(
+                event.type == events.PROJECT_REPLANNED and event.created_at >= request.created_at
+                for event in project_events
+            )
+            if completed:
+                continue
+            payload = request.payload_json or {}
+            raw_failure = payload.get("failure")
+            if not isinstance(raw_failure, dict):
+                continue
+            failure = PlannerFailureRecord.model_validate(raw_failure)
+            plan = latest_plans.get(project.id)
+            requested_version = payload.get("plan_version")
+            if (
+                plan is not None
+                and isinstance(requested_version, int)
+                and plan.version > requested_version
+            ):
+                # The plan commit survived; only the audit event was lost.
+                async with self._session_factory() as session:
+                    await events.emit_event(
+                        session,
+                        project_id=project.id,
+                        task_id=request.task_id,
+                        event_type=events.PROJECT_REPLANNED,
+                        payload={
+                            "plan_id": plan.id,
+                            "version": plan.version,
+                            "from_plan": payload.get("plan_id"),
+                            "from_version": requested_version,
+                            "recovered": True,
+                            "duplicate_avoided": True,
+                        },
+                    )
+                    await session.commit()
+                continue
+            lock = self._replan_locks.setdefault(project.id, asyncio.Lock())
+            async with lock:
+                if not await self._replan_budget_available(project.id):
+                    continue
+                await self._run_replan(
+                    project.id,
+                    failure,
+                    plan_id=payload.get("plan_id"),
+                    plan_version=requested_version if isinstance(requested_version, int) else None,
+                    recovered=True,
+                )
 
     async def _unexpected_failure(self, task_id: str, exc: BaseException) -> None:
         task = await self._load_task(TaskId(task_id))

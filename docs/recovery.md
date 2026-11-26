@@ -113,10 +113,12 @@ boundaries. Besides the plan-11 checkpoints (`after_attempt_row`,
 | `after_container_started` | container is visible to the sandbox manager, agent command may still be running |
 | `before_git_commit` / `after_git_commit` | integration candidate prepared; after the second, staging may already contain the attempt commit while the DB row is still `prepared` |
 | `before_push` / `after_push` | `GitManagerImpl.push_branch` is entering or leaving the actual `git push`; retries are safe because push is non-force |
-| `before_replan` / `after_replan` / `after_replan_event` | autonomous replan call boundary, after the new plan/version persists, and after its audit event commits |
+| `before_replan` / `after_replan` / `after_replan_event` | durable `project.replan_requested` is committed, then the replan and its completion event are committed; a restart resumes an incomplete request and skips a duplicate when the plan version already advanced |
 
 `tests/e2e/test_e2e_crash_soak.py` randomizes the pipeline checkpoints with real
 `SIGKILL`; `tests/integration/test_orchestrator_recovery.py` covers the event
 and git-commit boundaries with deterministic in-process crashes. The replan
-checkpoints assert that a restart never invokes the replanner a second time for
-the same failure.
+checkpoints assert that a restart resumes a request that committed before the
+crash and never invokes the replanner a second time when the new plan (or its
+completion event) is already durable. The replan budget is read from the plan
+table, so it survives restarts instead of resetting with process memory.

@@ -202,7 +202,10 @@ Global circuit breakers:
 - `max_total_attempts` per project (default 100): further launches are refused,
   a `CIRCUIT_BREAKER` event is written, and the project is paused.
 - `max_replans` per project (default 2): autonomous replanning after failures
-  is capped; exceeding it writes `CIRCUIT_BREAKER` and stops replanning.
+  is capped using the durable count of `replan:*` plans, so restarting the
+  process does not reset the budget; exceeding it writes `CIRCUIT_BREAKER` and
+  stops replanning. A `project.replan_requested` event is committed before the
+  planner runs, and startup resumes requests that have no completion event.
 - Model budget from settings/policy is checked before every launch; exhaustion
   is a `MODEL_BUDGET` deferral, not a failure.
 - No path retries forever: retry budget, infra cap, repeated-failure threshold,

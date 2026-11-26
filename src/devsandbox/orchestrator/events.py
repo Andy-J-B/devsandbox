@@ -45,6 +45,7 @@ PROJECT_COMPLETED = "project.completed"
 PROJECT_FAILED = "project.failed"
 PROJECT_MODE_CHANGED = "project.mode_changed"
 PROJECT_NEEDS_ATTENTION = "project.needs_attention"
+PROJECT_REPLAN_REQUESTED = "project.replan_requested"
 PROJECT_REPLANNED = "project.replanned"
 
 # Scheduling / safety / recovery
@@ -124,6 +125,7 @@ __all__ = [
     "PROJECT_NEEDS_ATTENTION",
     "PROJECT_PAUSED",
     "PROJECT_PLANNED",
+    "PROJECT_REPLAN_REQUESTED",
     "PROJECT_REPLANNED",
     "PROJECT_RESUMED",
     "PROJECT_STARTED",
